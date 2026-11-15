@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<devices>
+ <device udn='uuid:29815994-847e-5cb7-b8a0-543c5bb4c052' type='urn:schemas-upnp-org:device:MediaRenderer:1' location='http://192.168.0.162:52748/29815994-847e-5cb7-b8a0-543c5bb4c052.xml'>Speaker Badezimmer</device>
+ <device udn='uuid:70E787AF-1C2D-53BE-AC1C-43BD036D5300' type='urn:schemas-upnp-org:device:MediaRenderer:1' location='http://192.168.0.176:50294/70E787AF-1C2D-53BE-AC1C-43BD036D5300.xml'>Küche</device>
+ <device udn='uuid:53c6005e-fe3b-5e5f-b1a0-17a8343aa163' type='urn:schemas-upnp-org:device:MediaRenderer:1' location='http://192.168.0.176:60571/53c6005e-fe3b-5e5f-b1a0-17a8343aa163.xml'>Badezimmer</device>
+ <device udn='uuid:1f1af3a8-9488-5cc7-ad16-da5dd67c57be' type='urn:schemas-raumfeld-com:device:ConfigDevice:1' location='http://192.168.0.176:54089/1f1af3a8-9488-5cc7-ad16-da5dd67c57be.xml'>Raumfeld ConfigDevice</device>
+ <device udn='uuid:f9cfe911-afa8-5707-ae08-ae3c6c862e74' type='urn:schemas-raumfeld-com:device:RaumfeldDevice:1' location='http://192.168.0.176:56876/f9cfe911-afa8-5707-ae08-ae3c6c862e74.xml'>Teufel Raumfeld Device</device>
+ <device udn='uuid:4c7a5d2a-2c78-50ce-981a-5fbc0850f2f2' type='urn:schemas-upnp-org:device:MediaRenderer:1' location='http://192.168.0.121:58511/4c7a5d2a-2c78-50ce-981a-5fbc0850f2f2.xml'>Speaker Wohnzimmer #2</device>
+ <device udn='uuid:45b5b7b1-4720-5c7f-b682-59c0a4b0ac6b' type='urn:schemas-upnp-org:device:MediaRenderer:1' location='http://192.168.0.176:58830/45b5b7b1-4720-5c7f-b682-59c0a4b0ac6b.xml'>Speaker Küche #2</device>
+ <device udn='uuid:24b6d070-7f10-5471-bdac-7b9e9f2f36c2' type='urn:schemas-raumfeld-com:device:RaumfeldDevice:1' location='http://192.168.0.121:58460/24b6d070-7f10-5471-bdac-7b9e9f2f36c2.xml'>Teufel Raumfeld Device</device>
+ <device udn='uuid:e911a439-da73-5e47-84ae-706010da7788' type='urn:schemas-raumfeld-com:device:RaumfeldDevice:1' location='http://192.168.0.162:55813/e911a439-da73-5e47-84ae-706010da7788.xml'>Teufel Raumfeld Device</device>
+ <device udn='uuid:c24a80f6-f43a-51a1-9031-97cedeb3c9f3' type='urn:schemas-upnp-org:device:MediaServer:1' location='http://192.168.0.176:60406/c24a80f6-f43a-51a1-9031-97cedeb3c9f3.xml'>Raumfeld MediaServer</device>
+</devices>

@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<zoneConfig numRooms='3' spotifyMode='multiRoom'>
+ <zones>
+  <zone udn='uuid:zone-spotify' spotifyConnect='active'>
+   <room name='Küche' udn='uuid:room-kueche' powerState='ACTIVE'>
+    <renderer udn='uuid:spk-kueche' name='Speaker Küche'></renderer>
+   </room>
+   <room name='Wohnzimmer' udn='uuid:room-wohn' powerState='ACTIVE'>
+    <renderer udn='uuid:spk-wohn' name='Speaker Wohnzimmer'></renderer>
+   </room>
+  </zone>
+  <zone udn='uuid:zone-bad' spotifyConnect='inactive'>
+   <room name='Badezimmer' udn='uuid:room-bad' powerState='AUTOMATIC_STANDBY'>
+    <renderer udn='uuid:spk-bad' name='Speaker Badezimmer'></renderer>
+   </room>
+  </zone>
+ </zones>
+</zoneConfig>

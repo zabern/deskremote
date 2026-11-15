@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<zoneConfig numRooms='3' spotifyMode='singleRoom'>
+ <zones>
+  <zone udn='uuid:70E787AF-1C2D-53BE-AC1C-43BD036D5300'>
+   <room name='Küche' udn='uuid:34456ed3-7011-5bac-8c11-3b0e9d25be3b' powerState='AUTOMATIC_STANDBY'>
+    <renderer udn='uuid:45b5b7b1-4720-5c7f-b682-59c0a4b0ac6b' name='Speaker Küche #2'></renderer>
+   </room>
+  </zone>
+  <zone udn='uuid:53c6005e-fe3b-5e5f-b1a0-17a8343aa163'>
+   <room name='Badezimmer' udn='uuid:211f83b8-264d-5140-825e-ab764eb6eb2e' powerState='AUTOMATIC_STANDBY'>
+    <renderer udn='uuid:29815994-847e-5cb7-b8a0-543c5bb4c052' name='Speaker Badezimmer'></renderer>
+   </room>
+  </zone>
+ </zones>
+ <unassignedRooms>
+  <room name='Wohnzimmer' udn='uuid:d61b4a9c-428f-5007-83b2-71c87fc44aba' powerState='ACTIVE'>
+   <renderer udn='uuid:4c7a5d2a-2c78-50ce-981a-5fbc0850f2f2' name='Speaker Wohnzimmer #2' spotifyConnect='active'></renderer>
+  </room>
+ </unassignedRooms>
+</zoneConfig>

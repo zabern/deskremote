@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+.superpowers/
+.pytest_cache/
+*.egg-info/
+!DeskRemote.spec
