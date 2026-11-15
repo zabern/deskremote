@@ -23,10 +23,13 @@
 - Eine Teufel-Raumfeld-Anlage (Streaming-Lautsprecher, die die Teufel-/Raumfeld-App steuert) im selben Heimnetz.
 - Zum Bauen aus dem Quellcode: Python 3.13.
 
-## Starten
+## Herunterladen und starten
 
-- Programm bauen (siehe unten) und `dist\DeskRemote.exe` doppelklicken. Das Symbol erscheint unten rechts (ggf. unter „ausgeblendete Symbole“ – zum Anheften in die Taskleiste ziehen).
-- Oder direkt aus dem Quellcode: `.venv\Scripts\python -m deskremote`
+1. **[`DeskRemote.exe` herunterladen](https://github.com/zabern/deskremote/releases/latest)** (unter „Assets“) und an einen festen Ort legen. Keine Installation, kein Python nötig.
+2. Doppelklicken. Das Symbol erscheint unten rechts (ggf. unter „ausgeblendete Symbole“ – zum Anheften in die Taskleiste ziehen).
+3. Beim ersten Start warnt Windows SmartScreen, weil die exe nicht signiert ist: **„Weitere Informationen“ → „Trotzdem ausführen“**.
+
+Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode geht auch `.venv\Scripts\python -m deskremote`.
 
 **Linksklick** aufs Symbol: Räume, Lautstärke, Play/Pause, Standby, Favoriten, Suche.
 **Rechtsklick**: Favoriten, Alle pausieren, Einstellungen, Beenden.
