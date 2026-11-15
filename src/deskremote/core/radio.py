@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from ..i18n import tr
 from .config import Favorite
 from .text import clean_text
 
@@ -100,7 +101,7 @@ class RadioBrowser:
                 for d in data
                 if isinstance(d, dict) and str(d.get("url_resolved") or "").startswith(("http://", "https://"))
             ]
-        raise SearchError("Senderverzeichnis nicht erreichbar")
+        raise SearchError(tr("Senderverzeichnis nicht erreichbar"))
 
     @staticmethod
     def to_favorite(st: Station) -> Favorite:

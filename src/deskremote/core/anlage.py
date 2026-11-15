@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
 
+from ..i18n import tr
 from ..raumfeld.didl import didl_for_stream, title_from_didl, track_from_didl
 from ..raumfeld.host import RaumfeldHost
 from ..raumfeld.media import with_start_index
@@ -107,9 +108,9 @@ class Anlage:
             self._devices = self.host.list_devices()
         dev = self._devices.get(udn)
         if dev is None or dev.type != MEDIA_RENDERER:
-            raise UpnpError(f"Gerät {udn} nicht gefunden")
+            raise UpnpError(tr("Gerät {udn} nicht gefunden", udn=udn))
         if not self._location_ok(dev.location):
-            raise UpnpError(f"Gerät {udn} meldet eine Adresse außerhalb des Heimnetzes")
+            raise UpnpError(tr("Gerät {udn} meldet eine Adresse außerhalb des Heimnetzes", udn=udn))
         cached = self._upnp.get(udn)
         if cached is None or cached[0] != dev.location:
             cached = (dev.location, self.device_factory(dev.location))
@@ -118,14 +119,14 @@ class Anlage:
 
     def _speaker(self, room: Room) -> UpnpDevice:
         if not room.renderer_udns:
-            raise UpnpError(f"Raum {room.name} hat keinen Lautsprecher")
+            raise UpnpError(tr("Raum {room} hat keinen Lautsprecher", room=room.name))
         return self._renderer(room.renderer_udns[0])
 
     def _fresh(self, room_udn: str) -> tuple[ZoneConfig, Room]:
         zc, _ = self.host.get_zones()
         room = zc.room_by_udn(room_udn)
         if room is None:
-            raise PlayError("Raum nicht gefunden")
+            raise PlayError(tr("Raum nicht gefunden"))
         return zc, room
 
     # --- Zustand --------------------------------------------------------
@@ -200,7 +201,7 @@ class Anlage:
                 except UpnpError:
                     pass
             self.sleep(POLL_INTERVAL)
-        raise PlayError(f"{room.name} konnte nicht vorbereitet werden")
+        raise PlayError(tr("{room} konnte nicht vorbereitet werden", room=room.name))
 
     def _wake_zone_confirmed(self, room_udn: str):
         """Alle Räume der Zone aus Standby holen und warten, bis die Anlage ACTIVE meldet.
@@ -210,7 +211,7 @@ class Anlage:
         zc, _ = self.host.get_zones()
         zone = zc.zone_of(room_udn)
         if zone is None:
-            raise PlayError("Die Zone ist nicht mehr da – bitte erneut versuchen")
+            raise PlayError(tr("Die Zone ist nicht mehr da – bitte erneut versuchen"))
         sleepers = [r for r in zone.rooms if r.power_state.endswith("STANDBY")]
         if not sleepers:
             return zone
@@ -223,7 +224,7 @@ class Anlage:
             if zone is not None and not any(r.power_state.endswith("STANDBY") for r in zone.rooms):
                 return zone
             self.sleep(POLL_INTERVAL)
-        raise PlayError("Die Lautsprecher wachen nicht auf – bitte kurz warten und erneut versuchen")
+        raise PlayError(tr("Die Lautsprecher wachen nicht auf – bitte kurz warten und erneut versuchen"))
 
     def _prepare_zone(self, room_udn: str):
         """Raum (bzw. Gruppe) wecken, Zone sicherstellen und erst zurückkehren, wenn alles ACTIVE ist."""
@@ -237,7 +238,7 @@ class Anlage:
                     break
                 self.sleep(POLL_INTERVAL)
             else:
-                raise PlayError("Die Lautsprecher wachen nicht auf – bitte kurz warten und erneut versuchen")
+                raise PlayError(tr("Die Lautsprecher wachen nicht auf – bitte kurz warten und erneut versuchen"))
         self._ensure_zone(zc, room)
         return self._wake_zone_confirmed(room_udn)
 
@@ -259,14 +260,14 @@ class Anlage:
             renderer = self._renderer(zone.udn)
             started = self._play_confirmed(renderer, uri, metadata)
         except UpnpError as exc:
-            raise StartError(f"Album konnte nicht gestartet werden ({exc})") from exc
+            raise StartError(tr("Album konnte nicht gestartet werden ({error})", error=exc)) from exc
         if not started:
-            raise StartError("Diese Quelle kann Raumfeld nicht direkt abspielen")
+            raise StartError(tr("Diese Quelle kann Raumfeld nicht direkt abspielen"))
         if shuffle:
             try:
                 renderer.call(AVT, "SetPlayMode", InstanceID=0, NewPlayMode=play_mode_for(True, "off"))
             except UpnpError as exc:
-                raise PlayError("Musik läuft, aber der Zufallsmodus ließ sich nicht einschalten") from exc
+                raise PlayError(tr("Musik läuft, aber der Zufallsmodus ließ sich nicht einschalten")) from exc
 
     def play_favorite(self, room_udn: str, fav: Favorite) -> None:
         """Ein Favorit, egal welcher Art: Sender als Stream, Musik über Raumfelds Wiedergabeliste."""
@@ -279,13 +280,13 @@ class Anlage:
         try:
             self.play_container(room_udn, uri, fav.meta, shuffle=fav.kind == "artist")
         except StartError as exc:
-            raise PlayError(f"{fav.name} konnte nicht starten – noch in der Bibliothek?") from exc
+            raise PlayError(tr("{name} konnte nicht starten – noch in der Bibliothek?", name=fav.name)) from exc
 
     def _zone_renderer(self, room_udn: str) -> UpnpDevice:
         zc, room = self._fresh(room_udn)
         zone = zc.zone_of(room_udn)
         if zone is None:
-            raise PlayError(f"In {room.name} läuft nichts")
+            raise PlayError(tr("In {room} läuft nichts", room=room.name))
         return self._renderer(zone.udn)
 
     def next_track(self, room_udn: str) -> None:
@@ -300,20 +301,20 @@ class Anlage:
 
     def play_stream(self, room_udn: str, fav: Favorite) -> None:
         if is_hls(fav.url):  # nie an die Anlage: HLS ließ den Zonen-Renderer der One M neu starten
-            raise PlayError(f"{fav.name} spielt auf Raumfeld nicht (HLS-Stream)")
+            raise PlayError(tr("{name} spielt auf Raumfeld nicht (HLS-Stream)", name=fav.name))
         zone = self._prepare_zone(room_udn)  # erst bestätigt wach, dann laden (sonst verpufft Play)
         try:
             if self._play_confirmed(self._renderer(zone.udn), fav.url, didl_for_stream(fav.name, fav.url)):
                 return
         except UpnpError as exc:
-            raise PlayError(f"Sender nicht erreichbar ({exc})") from exc
-        raise PlayError(f"Sender nicht erreichbar: {fav.name}")
+            raise PlayError(tr("Sender nicht erreichbar ({error})", error=exc)) from exc
+        raise PlayError(tr("Sender nicht erreichbar: {name}", name=fav.name))
 
     def toggle_play(self, room_udn: str) -> None:
         zc, room = self._fresh(room_udn)
         zone = zc.zone_of(room_udn)
         if zone is None:
-            raise PlayError(f"In {room.name} läuft nichts")
+            raise PlayError(tr("In {room} läuft nichts", room=room.name))
         dev = self._renderer(zone.udn)
         state = dev.call(AVT, "GetTransportInfo", InstanceID=0).get("CurrentTransportState")
         if state == "PLAYING":
@@ -329,7 +330,7 @@ class Anlage:
             out = self._speaker(room).call(RC, "GetVolume", InstanceID=0, Channel="Master")
         volume = _int(out.get("CurrentVolume"))
         if volume is None:
-            raise UpnpError(f"Lautstärke von {room.name} nicht lesbar")
+            raise UpnpError(tr("Lautstärke von {room} nicht lesbar", room=room.name))
         return volume
 
     def _set_volume(self, zc: ZoneConfig, room: Room, volume: int) -> None:

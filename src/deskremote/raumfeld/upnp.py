@@ -7,6 +7,7 @@ from xml.sax.saxutils import escape
 
 import httpx
 
+from ..i18n import tr
 from ..log import QUIET_ACTIONS, get_logger, short
 from .xmlsafe import XmlError, parse
 
@@ -54,7 +55,7 @@ class UpnpDevice:
     def call(self, service: str, action: str, **args: str | int) -> dict[str, str]:
         url = self.services.get(service)
         if url is None:
-            raise UpnpError(f"Dienst {service} nicht vorhanden")
+            raise UpnpError(tr("Dienst {service} nicht vorhanden", service=service))
         params = "".join(f"<{k}>{escape(str(v))}</{k}>" for k, v in args.items())
         body = (
             '<?xml version="1.0" encoding="utf-8"?>'
@@ -80,13 +81,13 @@ class UpnpDevice:
         try:
             root = parse(resp.content)
         except XmlError as exc:
-            raise UpnpError(f"{action}: ungültige Antwort (HTTP {resp.status_code})") from exc
+            raise UpnpError(tr("{action}: ungültige Antwort (HTTP {status})", action=action, status=resp.status_code)) from exc
         fault = next((e for e in root.iter() if _local(e.tag) == "Fault"), None)
         if fault is not None or resp.status_code >= 400:
             code = next((e.text for e in root.iter() if _local(e.tag) == "errorCode"), "")
             desc = next((e.text for e in root.iter() if _local(e.tag) == "errorDescription"), "")
             log.warning("UPnP %s %s abgelehnt: %s %s", urlsplit(url).netloc, action, short(code, 20), short(desc))
-            raise UpnpError(f"{action} fehlgeschlagen: {code} {desc}".strip())
+            raise UpnpError(tr("{action} fehlgeschlagen: {code} {desc}", action=action, code=code, desc=desc).strip())
         response = next((e for e in root.iter() if _local(e.tag) == f"{action}Response"), None)
         if response is None:
             return {}

@@ -18,6 +18,7 @@ from typing import Any, Callable
 import httpx
 from PySide6.QtCore import QObject, Signal
 
+from ..i18n import tr
 from ..core.anlage import PlayError
 from ..core.config import Config
 from ..log import get_logger, short
@@ -51,9 +52,9 @@ _STOP = ("__stop__", ())
 
 def _describe(exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
-        return f"Die Anlage hat die Aktion abgelehnt (HTTP {exc.response.status_code})"
+        return tr("Die Anlage hat die Aktion abgelehnt (HTTP {status})", status=exc.response.status_code)
     if isinstance(exc, XmlError):
-        return "Die Anlage hat eine unverständliche Antwort geschickt"
+        return tr("Die Anlage hat eine unverständliche Antwort geschickt")
     return str(exc)
 
 
@@ -179,7 +180,7 @@ class Worker(QObject):
         if action == "__stop__":
             return False
         if action in ALLOWED_ACTIONS:
-            self.error.emit(OFFLINE_TEXT)
+            self.error.emit(tr(OFFLINE_TEXT))
         return True
 
     def _run(self) -> None:
@@ -204,7 +205,7 @@ class Worker(QObject):
                     if act == "__refresh__":
                         continue
                     if act not in ALLOWED_ACTIONS:
-                        self.error.emit(f"Unbekannte Aktion: {act}")
+                        self.error.emit(tr("Unbekannte Aktion: {action}", action=act))
                         continue
                     get_logger().info("Aktion %s %s", act, _log_args(act, a))
                     try:

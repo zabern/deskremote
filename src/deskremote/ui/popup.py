@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QPushButton, QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
+from ..i18n import tr
 from .. import __version__
 from ..core.anlage import RoomState
 from ..core.config import Config
@@ -136,7 +137,7 @@ class Popup(QWidget):
         self._heading.setObjectName("heading")
         head.addWidget(self._heading)
         head.addStretch()
-        self._offline = PlainLabel("Anlage nicht erreichbar")
+        self._offline = PlainLabel(tr("Anlage nicht erreichbar"))
         self._offline.setObjectName("offline")
         head.addWidget(self._offline)
         version = PlainLabel(f"v{__version__}")
@@ -173,10 +174,10 @@ class Popup(QWidget):
         self._message_timer.timeout.connect(self._clear_message)
 
         foot = QHBoxLayout()
-        for text, sig, name in (("Musik", self.open_music, "open_music"),
-                                ("Sendersuche", self.open_search, "open_search"),
-                                ("Räume koppeln", self.open_couple, "open_couple"),
-                                ("Einstellungen", self.open_settings, "open_settings")):
+        for text, sig, name in ((tr("Musik"), self.open_music, "open_music"),
+                                (tr("Sendersuche"), self.open_search, "open_search"),
+                                (tr("Räume koppeln"), self.open_couple, "open_couple"),
+                                (tr("Einstellungen"), self.open_settings, "open_settings")):
             b = QPushButton(text)
             b.setObjectName(name)
             b.setProperty("flat_link", True)
@@ -297,7 +298,7 @@ class Popup(QWidget):
     def _update_target_label(self) -> None:
         members = self._target_members()
         names = " + ".join(r.name for r in members)
-        self._target_label.setText(f"Favoriten · Ziel: {names}" if names else "Favoriten · Ziel: Raum anklicken")
+        self._target_label.setText(tr("Favoriten · Ziel: {names}", names=names) if names else tr("Favoriten · Ziel: Raum anklicken"))
 
     def _apply_enabled(self) -> None:
         has_target = bool(self._target_members())
@@ -354,7 +355,7 @@ class Popup(QWidget):
         play.setProperty("round", True)
         play.setProperty("playing", r.playing)
         play.setProperty("can_play", r.zone_udn is not None)
-        play.setToolTip("Play/Pause" if r.zone_udn else "Hier läuft nichts – Sender wählen")
+        play.setToolTip("Play/Pause" if r.zone_udn else tr("Hier läuft nichts – Sender wählen"))
         play.setCursor(Qt.PointingHandCursor)
         play.clicked.connect(lambda _=False, u=r.udn, b=play: self._toggle(b, u))
         return play
@@ -393,7 +394,7 @@ class Popup(QWidget):
         power.setObjectName(f"standby:{r.udn}")
         power.setProperty("round", True)
         room = html.escape(r.name)  # Tooltips wertet Qt sonst als HTML aus
-        power.setToolTip(f"{room} einschalten" if standby else f"{room} in Standby")
+        power.setToolTip(tr("{room} einschalten", room=room) if standby else tr("{room} in Standby", room=room))
         power.setCursor(Qt.PointingHandCursor)
         power.clicked.connect(lambda _=False, u=r.udn, s=standby: self.action.emit("wake" if s else "standby", (u,)))
         return power
@@ -426,19 +427,19 @@ class Popup(QWidget):
         row.setSpacing(8)
         if indent:
             row.addSpacing(38)
-        prev = self._mode_button(ICON_PREV, f"prev:{key}", False, "Vorheriger Titel")
+        prev = self._mode_button(ICON_PREV, f"prev:{key}", False, tr("Vorheriger Titel"))
         prev.setProperty("standby", False)
         prev.clicked.connect(lambda _=False, u=r.udn: self.action.emit("previous_track", (u,)))
-        nxt = self._mode_button(ICON_NEXT, f"next:{key}", False, "Nächster Titel")
+        nxt = self._mode_button(ICON_NEXT, f"next:{key}", False, tr("Nächster Titel"))
         nxt.setProperty("standby", False)
         nxt.clicked.connect(lambda _=False, u=r.udn: self.action.emit("next_track", (u,)))
         shuffle = self._mode_button(ICON_SHUFFLE, f"shuffle:{key}", r.shuffle,
-                                    "Zufall" if r.repeat != "one" else "Zufall (nicht mit „einen wiederholen“)")
+                                    tr("Zufall") if r.repeat != "one" else tr("Zufall (nicht mit „einen wiederholen“)"))
         shuffle.setProperty("can_use", r.repeat != "one")
         shuffle.clicked.connect(lambda _=False, s=r: self.action.emit("set_play_mode", (s.udn, not s.shuffle, s.repeat)))
         repeat = self._mode_button(ICON_REPEAT_ONE if r.repeat == "one" else ICON_REPEAT_ALL, f"repeat:{key}",
-                                   r.repeat != "off", {"off": "Wiederholen: aus", "all": "Wiederholen: alle",
-                                                       "one": "Wiederholen: einen Titel"}[r.repeat])
+                                   r.repeat != "off", tr({"off": "Wiederholen: aus", "all": "Wiederholen: alle",
+                                                       "one": "Wiederholen: einen Titel"}[r.repeat]))
         nxt_mode = {"off": "all", "all": "one", "one": "off"}[r.repeat]
         repeat.clicked.connect(lambda _=False, s=r, m=nxt_mode: self.action.emit("set_play_mode", (s.udn, s.shuffle, m)))
         for b in (prev, nxt, shuffle, repeat):
@@ -451,7 +452,7 @@ class Popup(QWidget):
         top = QHBoxLayout()
         top.setSpacing(10)
         top.addWidget(self._play_button(r.zone_udn or r.udn, r), 0, Qt.AlignTop)
-        top.addWidget(self._header(r.udn, [r], "Als Ziel für Sender und Tastenkürzel wählen"), 1)
+        top.addWidget(self._header(r.udn, [r], tr("Als Ziel für Sender und Tastenkürzel wählen")), 1)
         top.addWidget(self._power_button(r), 0, Qt.AlignTop)
         lay.addLayout(top)
         if r.is_queue:
@@ -467,7 +468,7 @@ class Popup(QWidget):
         grid.setVerticalSpacing(6)
         grid.setColumnStretch(2, 1)
         grid.addWidget(self._play_button(zone, first), 0, 0, Qt.AlignTop)
-        head = self._header(zone, members, "Gruppe als Ziel für Sender und Tastenkürzel wählen")
+        head = self._header(zone, members, tr("Gruppe als Ziel für Sender und Tastenkürzel wählen"))
         grid.addWidget(head, 0, 1, 1, 3)
         first_row = 1
         if first.is_queue:

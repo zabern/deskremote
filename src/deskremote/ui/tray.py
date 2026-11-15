@@ -6,6 +6,7 @@ from PySide6.QtCore import QPoint, Signal
 from PySide6.QtGui import QAction, QCursor, QGuiApplication
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from ..i18n import tr
 from ..core.config import Config
 from .popup import Popup
 from .theme import STYLESHEET, tray_icon
@@ -21,7 +22,7 @@ class Tray(QSystemTrayIcon):
         self.popup = popup
         self.cfg = cfg
         self._online = False
-        self.setToolTip("DeskRemote – verbinde …")
+        self.setToolTip(tr("DeskRemote – verbinde …"))
         self._menu = QMenu()
         self._menu.setStyleSheet(STYLESHEET)
         self._menu.aboutToShow.connect(self._build_menu)
@@ -31,7 +32,7 @@ class Tray(QSystemTrayIcon):
     def set_online(self, online: bool) -> None:
         self._online = online
         self.setIcon(tray_icon(online))
-        self.setToolTip("DeskRemote" if online else "DeskRemote – Anlage nicht erreichbar")
+        self.setToolTip("DeskRemote" if online else tr("DeskRemote – Anlage nicht erreichbar"))
 
     def notify(self, text: str) -> None:
         """Meldung im Ausklappfenster – bewusst keine Windows-Benachrichtigung."""
@@ -67,14 +68,14 @@ class Tray(QSystemTrayIcon):
             act.triggered.connect(lambda _=False, f=fav: self.action.emit("play_favorite", (self.cfg.target_room, f)))
             self._menu.addAction(act)
         self._menu.addSeparator()
-        pause = QAction("Alle pausieren", self._menu)
+        pause = QAction(tr("Alle pausieren"), self._menu)
         pause.setEnabled(self._online)
         pause.triggered.connect(lambda: self.action.emit("pause_all", ()))
         self._menu.addAction(pause)
-        settings = QAction("Einstellungen", self._menu)
+        settings = QAction(tr("Einstellungen"), self._menu)
         settings.triggered.connect(self.open_settings.emit)
         self._menu.addAction(settings)
         self._menu.addSeparator()
-        quit_act = QAction("Beenden", self._menu)
+        quit_act = QAction(tr("Beenden"), self._menu)
         quit_act.triggered.connect(self.quit_requested.emit)
         self._menu.addAction(quit_act)

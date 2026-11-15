@@ -9,12 +9,13 @@ import threading
 from pathlib import Path
 
 import httpx
-from PySide6.QtCore import QLockFile, QObject, Signal
+from PySide6.QtCore import QLockFile, QObject, QProcess, Signal
 from PySide6.QtWidgets import QApplication
 
 from .core.anlage import Anlage
 from .core.config import load_config, needs_logo_lookup, save_config
 from .core.radio import RadioBrowser
+from .i18n import set_language, tr
 from .log import get_logger, setup_logging
 from .raumfeld.discovery import discover_host
 from .raumfeld.host import RaumfeldHost
@@ -46,6 +47,7 @@ class App:
     def __init__(self, qapp: QApplication):
         self.qapp = qapp
         self.cfg = load_config()
+        set_language(self.cfg.language)  # vor allen Fenstern – Sprachwechsel greift erst nach Neustart
         self.client = httpx.Client()
         self.worker = Worker(
             self.cfg,
@@ -88,7 +90,7 @@ class App:
 
     def play_on_target(self, fav) -> None:
         if not self.cfg.target_room:
-            self.tray.notify("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken.")
+            self.tray.notify(tr("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken."))
             return
         self.submit("play_favorite", (self.cfg.target_room, fav))
 
@@ -110,13 +112,13 @@ class App:
         failed = self.hotkeys.register(self.cfg)
         if failed:
             names = ", ".join(self.cfg.hotkeys[n] or n for n in failed)
-            self.tray.notify(f"Tastenkürzel schon belegt oder ungültig: {names}")
+            self.tray.notify(tr("Tastenkürzel schon belegt oder ungültig: {names}", names=names))
 
     def on_hotkey(self, name: str) -> None:
         try:
             todo = dispatch(name, self.cfg)
         except NoTarget:
-            self.tray.notify("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken.")
+            self.tray.notify(tr("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken."))
             return
         if todo is not None:
             self.submit(*todo)
@@ -126,6 +128,7 @@ class App:
             w = SettingsWindow(self.cfg, save=save_config)
             w.config_changed.connect(self.config_changed)
             w.closed.connect(self.register_hotkeys)
+            w.restart_requested.connect(self.restart)
             return w
         self.hotkeys.unregister_all()  # sonst fangen die globalen Kürzel die Tasten beim Neubelegen ab
         self._show("settings", make)
@@ -153,7 +156,7 @@ class App:
 
     def play_container(self, uri: str, metadata: str) -> None:
         if not self.cfg.target_room:
-            self.tray.notify("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken.")
+            self.tray.notify(tr("Kein Ziel-Raum gewählt – im Fenster einen Raum anklicken."))
             return
         self.submit("play_container", (self.cfg.target_room, uri, metadata))
 
@@ -205,6 +208,15 @@ class App:
             return w
         self._show("couple", make)
 
+    def restart(self) -> None:
+        """Neue Instanz starten und selbst beenden; die neue wartet, bis diese ihre Sperre freigibt."""
+        if getattr(sys, "frozen", False):
+            program, args = sys.executable, [RESTART_FLAG]
+        else:
+            program, args = sys.executable, ["-m", "deskremote", RESTART_FLAG]
+        if QProcess.startDetached(program, args)[0]:
+            self.qapp.quit()
+
     def start(self) -> None:
         self.tray.show()
         self.register_hotkeys()
@@ -218,13 +230,16 @@ class App:
         self.client.close()
 
 
+RESTART_FLAG = "--restart"
+
+
 def main() -> int:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName("DeskRemote")
     qapp.setQuitOnLastWindowClosed(False)
     qapp.setWindowIcon(app_icon())
     lock = QLockFile(os.path.join(tempfile.gettempdir(), "deskremote.lock"))
-    if not lock.tryLock(100):
+    if not lock.tryLock(15_000 if RESTART_FLAG in sys.argv else 100):
         return 0  # läuft schon
     setup_logging()
     from . import __version__

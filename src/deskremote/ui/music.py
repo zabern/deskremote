@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
+from ..i18n import tr
 from ..core.config import MAX_META, Config, Favorite
 from ..core.text import clean_text
 from ..raumfeld.media import (
@@ -59,7 +60,7 @@ class MusicWindow(QWidget):
         self._generation = 0
         self._loading = False
         self._cover_labels: dict[str, PlainLabel] = {}
-        self.setWindowTitle("Musik")
+        self.setWindowTitle(tr("Musik"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
         self.resize(560, 640)
@@ -69,17 +70,17 @@ class MusicWindow(QWidget):
         self.source = QComboBox()
         self.source.setObjectName("source")
         self.source.currentIndexChanged.connect(self._source_changed)
-        top.addWidget(PlainLabel("Quelle:"))
+        top.addWidget(PlainLabel(tr("Quelle:")))
         top.addWidget(self.source, 1)
         root.addLayout(top)
 
         row = QHBoxLayout()
         self.query = QLineEdit()
         self.query.setObjectName("query")
-        self.query.setPlaceholderText("Album suchen …")
+        self.query.setPlaceholderText(tr("Album suchen …"))
         row.addWidget(self.query, 1)
-        for text, name, slot in (("Alben", "albums", self.show_albums), ("Künstler", "artists", self.show_artists),
-                                 ("Ordner", "folders", self.show_folders)):
+        for text, name, slot in ((tr("Alben"), "albums", self.show_albums), (tr("Künstler"), "artists", self.show_artists),
+                                 (tr("Ordner"), "folders", self.show_folders)):
             b = QPushButton(text)
             b.setObjectName(f"mode:{name}")
             b.setProperty("flat_link", True)
@@ -88,7 +89,7 @@ class MusicWindow(QWidget):
         root.addLayout(row)
 
         nav = QHBoxLayout()
-        self.back_btn = QPushButton("‹ Zurück")
+        self.back_btn = QPushButton(tr("‹ Zurück"))
         self.back_btn.setObjectName("back")
         self.back_btn.setProperty("flat_link", True)
         self.back_btn.clicked.connect(self.back)
@@ -135,27 +136,27 @@ class MusicWindow(QWidget):
             self._servers = []
             self.source.clear()
             self._clear()
-            self.status.setText("Quelle nicht erreichbar")
+            self.status.setText(tr("Quelle nicht erreichbar"))
             return
         self._servers = list(servers)
         self.source.blockSignals(True)
         self.source.clear()
         for s in self._servers:
-            self.source.addItem("Meine Musik (Raumfeld)" if s.is_raumfeld else f"DLNA: {clean_text(s.name, 60)}", s.udn)
+            self.source.addItem(tr("Meine Musik (Raumfeld)") if s.is_raumfeld else f"DLNA: {clean_text(s.name, 60)}", s.udn)
         idx = next((i for i, s in enumerate(self._servers) if s.udn == self.cfg.music_source), 0)
         if self._servers:
             self.source.setCurrentIndex(idx)
         self.source.blockSignals(False)
         if not self._servers:
             self._clear()
-            self.status.setText("Keine Musikquelle gefunden – Musikordner in der Teufel-App hinzufügen")
+            self.status.setText(tr("Keine Musikquelle gefunden – Musikordner in der Teufel-App hinzufügen"))
             return
         self.show_artists()  # Start mit Künstlern
 
     def discover(self, find: Callable[[], list]) -> None:
         """Quellen im Hintergrund suchen; das Fenster ist sofort bedienbar."""
         self._clear()
-        self.status.setText("Suche Musikquellen …")
+        self.status.setText(tr("Suche Musikquellen …"))
 
         def work():
             try:
@@ -194,25 +195,25 @@ class MusicWindow(QWidget):
             self.query.blockSignals(False)
             self._timer.stop()
         self._search_artists = artists
-        self.query.setPlaceholderText("Künstler suchen …" if artists else "Album suchen …")
+        self.query.setPlaceholderText(tr("Künstler suchen …") if artists else tr("Album suchen …"))
 
     def show_albums(self) -> None:
         server = self._server()
         self._set_search_mode(False)
         if server is not None:
-            self._start(View("Alben", ALBUMS) if server.is_raumfeld else View("Musik", ROOT))
+            self._start(View(tr("Alben"), ALBUMS) if server.is_raumfeld else View(tr("Musik"), ROOT))
 
     def show_artists(self) -> None:
         server = self._server()
         self._set_search_mode(server is not None and server.is_raumfeld)
         if server is not None:
-            self._start(View("Künstler", ARTISTS) if server.is_raumfeld else View("Musik", ROOT))
+            self._start(View(tr("Künstler"), ARTISTS) if server.is_raumfeld else View(tr("Musik"), ROOT))
 
     def show_folders(self) -> None:
         server = self._server()
         self._set_search_mode(False)
         if server is not None:
-            self._start(View("Ordner", FOLDERS) if server.is_raumfeld else View("Musik", ROOT))
+            self._start(View(tr("Ordner"), FOLDERS) if server.is_raumfeld else View(tr("Musik"), ROOT))
 
     def open_container(self, c: MediaContainer) -> None:
         heading = f"{c.title} · {c.artist}" if c.artist else c.title
@@ -234,7 +235,7 @@ class MusicWindow(QWidget):
             self.show_artists() if artists else self.show_albums()
             return
         target = (SEARCH_ARTISTS if artists else SEARCH_ALBUMS) if server.is_raumfeld else ROOT
-        self._start(View(f"Suche: {text}", target, search=text))
+        self._start(View(tr("Suche: {text}", text=text), target, search=text))
 
     def scroll_to_end(self) -> None:
         bar = self.scroll.verticalScrollBar()
@@ -252,7 +253,7 @@ class MusicWindow(QWidget):
         self._loading = True
         if not append:
             self._clear()
-            self.status.setText("Lade …")
+            self.status.setText(tr("Lade …"))
         self._update_nav()
 
         def work():
@@ -262,7 +263,7 @@ class MusicWindow(QWidget):
                 else:
                     result = server.browse(view.object_id, start=start, count=PAGE_SIZE)
             except Exception:  # noqa: BLE001 – Quelle weg oder kaputte Antwort
-                result = "Quelle nicht erreichbar"
+                result = tr("Quelle nicht erreichbar")
             self._loaded.emit(gen, result, append)
 
         if self.run_async:
@@ -293,7 +294,7 @@ class MusicWindow(QWidget):
         view.total = page.total
         for n, item in enumerate(items):
             self._list.insertWidget(self._list.count() - 1, self._row(offset + n, item))
-        self.status.setText("" if view.items else "Nichts gefunden")
+        self.status.setText("" if view.items else tr("Nichts gefunden"))
         self._update_nav()
         if page.items:
             QTimer.singleShot(0, self._maybe_more)  # Fenster noch nicht voll → gleich weiterladen
@@ -342,13 +343,13 @@ class MusicWindow(QWidget):
             title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             lay.addWidget(title, 1)
             if item.child_count is not None and item.kind == "album":
-                count = PlainLabel(f"{item.child_count} Titel")
+                count = PlainLabel(tr("{count} Titel", count=item.child_count))
                 count.setProperty("muted", True)
                 lay.addWidget(count)
             open_btn = QPushButton("›")
             open_btn.setObjectName(f"open:{index}")
             open_btn.setProperty("round", True)
-            open_btn.setToolTip("Öffnen")
+            open_btn.setToolTip(tr("Öffnen"))
             open_btn.clicked.connect(lambda _=False, c=item: self.open_container(c))
             lay.addWidget(open_btn)
             artist_play = item.kind == "artist" and self._raumfeld_source()
@@ -358,10 +359,10 @@ class MusicWindow(QWidget):
                 play.setProperty("round", True)
                 play.setProperty("icon_btn", True)
                 if artist_play:
-                    play.setToolTip("Alle Titel im Zufallsmodus")
+                    play.setToolTip(tr("Alle Titel im Zufallsmodus"))
                     play.clicked.connect(lambda _=False, c=item: self._play_artist(c))
                 else:
-                    play.setToolTip("Abspielen")
+                    play.setToolTip(tr("Abspielen"))
                     play.clicked.connect(lambda _=False, c=item: self._play_container(c, 0))
                 lay.addWidget(play)
             if item.kind in ("album", "artist") and self._raumfeld_source():
@@ -380,7 +381,7 @@ class MusicWindow(QWidget):
             play.setObjectName(f"playtrack:{index}")
             play.setProperty("round", True)
             play.setProperty("icon_btn", True)
-            play.setToolTip("Ab diesem Titel abspielen")
+            play.setToolTip(tr("Ab diesem Titel abspielen"))
             play.clicked.connect(lambda _=False, i=index: self._play_view(i))
             lay.addWidget(play)
             view = self._stack[-1] if self._stack else None
@@ -396,7 +397,7 @@ class MusicWindow(QWidget):
 
     def _container_star(self, index: int, c: MediaContainer) -> QPushButton:
         if c.kind == "artist":
-            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, f"{c.title} · Zufall", c.art_url)
+            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, tr("{name} · Zufall", name=c.title), c.art_url)
         name = f"{c.title} · {c.artist}" if c.artist else c.title
         return self._star(f"star:{index}", "album", c.id, 0, name, c.art_url)
 
@@ -408,7 +409,7 @@ class MusicWindow(QWidget):
         b.setObjectName(object_name)
         b.setProperty("fav_key", f"{kind} {url}")
         b.setProperty("round", True)
-        b.setToolTip("Als Favorit speichern")
+        b.setToolTip(tr("Als Favorit speichern"))
         b.clicked.connect(lambda _=False: self._add_favorite(object_name, kind, container_id, start, name, cover))
         return b
 
@@ -439,10 +440,10 @@ class MusicWindow(QWidget):
 
     def _on_fav_ready(self, fav, star_name: str) -> None:
         if fav is None:
-            self.status.setText("Quelle nicht erreichbar")
+            self.status.setText(tr("Quelle nicht erreichbar"))
             return
         if len(fav.meta) > MAX_META:
-            self.status.setText("Dieser Eintrag ist zu groß für einen Favoriten")  # sonst wäre die Config ungültig
+            self.status.setText(tr("Dieser Eintrag ist zu groß für einen Favoriten"))  # sonst wäre die Config ungültig
             return
         if self._fav_exists(fav.kind, fav.url):
             return
@@ -453,7 +454,7 @@ class MusicWindow(QWidget):
         for star in self.findChildren(QPushButton):
             if star.property("fav_key") == key:
                 star.setText("★")
-        self.status.setText(f"Favorit gespeichert: {fav.name}")
+        self.status.setText(tr("Favorit gespeichert: {name}", name=fav.name))
 
     def _attach_cover(self, label: PlainLabel, item: MediaContainer) -> None:
         if self.covers is None:
@@ -480,7 +481,7 @@ class MusicWindow(QWidget):
 
     def _on_meta(self, uri: str, meta: str, shuffle: bool) -> None:
         if not meta:
-            self.status.setText("Quelle nicht erreichbar")  # nie ohne Metadaten an die Anlage senden
+            self.status.setText(tr("Quelle nicht erreichbar"))  # nie ohne Metadaten an die Anlage senden
             return
         (self.play_shuffled if shuffle else self.play).emit(uri, meta)
 
@@ -498,7 +499,7 @@ class MusicWindow(QWidget):
         if server is None:
             return
         if not self.target():
-            self.status.setText("Kein Ziel-Raum gewählt – im Ausklappfenster einen Raum anklicken")
+            self.status.setText(tr("Kein Ziel-Raum gewählt – im Ausklappfenster einen Raum anklicken"))
             return
         def work():
             index = start_index

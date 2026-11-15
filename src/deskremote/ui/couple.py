@@ -7,6 +7,7 @@ from collections import defaultdict
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
+from ..i18n import tr
 from ..core.anlage import RoomState
 from .theme import STYLESHEET, PlainLabel, app_icon, checkbox_style
 
@@ -29,7 +30,7 @@ class CoupleDialog(QWidget):
 
     def __init__(self, rooms: list[RoomState], target_room: str | None):
         super().__init__(None, Qt.Window)
-        self.setWindowTitle("Räume koppeln")
+        self.setWindowTitle(tr("Räume koppeln"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET + checkbox_style())
         self.resize(380, 300)
@@ -39,10 +40,10 @@ class CoupleDialog(QWidget):
         self._editing = False  # Nutzer hat Haken geändert, aber noch nicht übernommen
 
         root = QVBoxLayout(self)
-        head = PlainLabel("Diese Räume gemeinsam abspielen:")
+        head = PlainLabel(tr("Diese Räume gemeinsam abspielen:"))
         head.setObjectName("heading")
         root.addWidget(head)
-        hint = PlainLabel("Haken setzen koppelt, Haken entfernen trennt.")
+        hint = PlainLabel(tr("Haken setzen koppelt, Haken entfernen trennt."))
         hint.setProperty("muted", True)
         root.addWidget(hint)
 
@@ -56,7 +57,7 @@ class CoupleDialog(QWidget):
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
         bottom.addWidget(self.status, 1)
-        self.apply = QPushButton("Übernehmen")
+        self.apply = QPushButton(tr("Übernehmen"))
         self.apply.setObjectName("apply")
         self.apply.clicked.connect(self._apply)
         bottom.addWidget(self.apply)
@@ -85,7 +86,7 @@ class CoupleDialog(QWidget):
                 box.setChecked(udn in self._group)
                 box.blockSignals(False)
         names = " + ".join(r.name for r in group)
-        self.status.setText(f"Gekoppelt: {names}" if names else "Keine Räume gekoppelt")
+        self.status.setText(tr("Gekoppelt: {names}", names=names) if names else tr("Keine Räume gekoppelt"))
         self._update()
 
     # --- intern ---------------------------------------------------------
@@ -119,5 +120,5 @@ class CoupleDialog(QWidget):
         if sel:
             self._target = sel[0]
         self._editing = False  # ab jetzt zeigt das Fenster wieder den Stand der Anlage
-        self.status.setText("Wird übernommen …")
+        self.status.setText(tr("Wird übernommen …"))
         self.apply.setEnabled(False)

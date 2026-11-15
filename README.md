@@ -2,7 +2,7 @@
 
 **Inoffizielle Windows-Fernbedienung für Teufel Raumfeld** – lebt im Infobereich der Taskleiste: Räume, Lautstärke, Favoriten, Internetradio und die Musik vom NAS, ohne das Handy zu zücken.
 
-*Unofficial Windows tray remote for Teufel Raumfeld multi-room speakers (UI in German).*
+*Unofficial Windows tray remote for Teufel Raumfeld multi-room speakers. UI in German or English – picked from your Windows language on first start, switchable under Settings → Language.*
 
 ![DeskRemote – Ausklappfenster](docs/screenshot.png)
 
@@ -16,6 +16,7 @@
 - **Musik vom NAS:** Alben, Künstler, Ordner und Suche in der Raumfeld-Bibliothek, mit Covern; Zufall und Wiederholen.
 - **Spotify-Anzeige:** spielt Spotify Connect, zeigt DeskRemote das Spotify-Icon und (im Mehrraum-Modus) Titel und Interpret.
 - **Globale Tastenkürzel** und ein Rechtsklick-Menü am Taskleistensymbol.
+- **Deutsch oder Englisch:** beim ersten Start nach der Windows-Sprache, umstellbar in den Einstellungen (gilt nach Neustart).
 
 ## Voraussetzungen
 

@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from ..i18n import LANGUAGES, system_language
+
 
 MUSIC_KINDS = ("album", "track", "artist")
 MAX_META = 16_000  # DIDL eines Albums ist ~1–2 KB; mehr ist kein echter Eintrag
@@ -103,10 +105,12 @@ class Config:
     title: str = "DeskRemote"
     online_covers: bool = True  # fehlende Cover bei MusicBrainz suchen
     music_source: str | None = None  # zuletzt gewählte Musikquelle (UDN)
+    language: str = "de"  # Oberflächensprache, siehe i18n.LANGUAGES
 
 
 def default_config() -> Config:
-    return Config()
+    """Erster Start (keine Config): Sprache nach Windows. Bestehende Configs ohne Feld bleiben Deutsch."""
+    return Config(language=system_language())
 
 
 def config_path() -> Path:
@@ -159,6 +163,9 @@ def _from_dict(data: object) -> Config:
     if not isinstance(raw_hotkeys, dict) or not all(isinstance(v, str) for v in raw_hotkeys.values()):
         raise TypeError("Tastenkürzel ungültig")
     hotkeys.update({k: v for k, v in raw_hotkeys.items() if k in hotkeys})
+    language = data.get("language", "de")
+    if language not in LANGUAGES:
+        raise ValueError("Sprache unbekannt")
     step = data.get("volume_step", 5)
     if not isinstance(step, int) or isinstance(step, bool) or not 1 <= step <= 25:
         raise ValueError("Lautstärkeschritt ungültig")
@@ -172,6 +179,7 @@ def _from_dict(data: object) -> Config:
         title=(_opt_str(data.get("title", "DeskRemote")) or "DeskRemote")[:40],
         online_covers=_bool(data.get("online_covers", True)),
         music_source=_opt_str(data.get("music_source")),
+        language=language,
     )
 
 

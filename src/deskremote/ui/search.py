@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+from ..i18n import tr
 from ..core.config import Config, Favorite
 from ..core.radio import SearchError, Station
 from .theme import app_icon, PlainLabel, ICON_PLAY, STYLESHEET
@@ -28,7 +29,7 @@ class SearchWindow(QWidget):
         self.radio, self.cfg, self.save, self.run_async = radio, cfg, save, run_async
         self._generation = 0
         self._stations: list[Station] = []
-        self.setWindowTitle("Sender suchen")
+        self.setWindowTitle(tr("Sender suchen"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
         self.resize(460, 520)
@@ -37,11 +38,11 @@ class SearchWindow(QWidget):
         row = QHBoxLayout()
         self.query = QLineEdit()
         self.query.setObjectName("query")
-        self.query.setPlaceholderText("Sendername, z. B. FM4")
+        self.query.setPlaceholderText(tr("Sendername, z. B. FM4"))
         self.country = QComboBox()
         self.country.setObjectName("country")
         for label, code in COUNTRIES:
-            self.country.addItem(label, code)
+            self.country.addItem(tr(label), code)
         idx = next((i for i, (_, c) in enumerate(COUNTRIES) if c == cfg.search_country), 0)
         self.country.setCurrentIndex(idx)
         row.addWidget(self.query, 1)
@@ -82,7 +83,7 @@ class SearchWindow(QWidget):
             return
         self._generation += 1
         gen, country = self._generation, self.country.currentData()
-        self.status.setText("Suche …")
+        self.status.setText(tr("Suche …"))
 
         def work():
             try:
@@ -90,7 +91,7 @@ class SearchWindow(QWidget):
             except SearchError as exc:
                 result = str(exc)
             except Exception:  # noqa: BLE001 – nie auf "Suche …" stehen bleiben
-                result = "Suche fehlgeschlagen"
+                result = tr("Suche fehlgeschlagen")
             self._results_ready.emit(gen, result)
 
         if self.run_async:
@@ -119,7 +120,7 @@ class SearchWindow(QWidget):
             self.status.setText(result)
             return
         self._stations = list(result)
-        self.status.setText("" if self._stations else "Keine Sender gefunden")
+        self.status.setText("" if self._stations else tr("Keine Sender gefunden"))
         for i, st in enumerate(self._stations):
             self._list.insertWidget(i, self._row(i, st))
 
@@ -133,24 +134,24 @@ class SearchWindow(QWidget):
         info.setObjectName(f"info:{i}")
         info.setProperty("muted", True)
         if st.hls:
-            info.setText(f"{info.text()} · spielt auf Raumfeld nicht".lstrip(" ·"))
+            info.setText((f"{info.text()} · " + tr("spielt auf Raumfeld nicht")).lstrip(" ·"))
         play = QPushButton(ICON_PLAY)
         play.setObjectName(f"play:{i}")
         play.setProperty("round", True)
         play.setProperty("icon_btn", True)
-        play.setToolTip("Im Ziel-Raum abspielen")
+        play.setToolTip(tr("Im Ziel-Raum abspielen"))
         play.clicked.connect(lambda _=False, s=st: self.play.emit(self.radio.to_favorite(s)))
         star = QPushButton("☆")
         star.setObjectName(f"star:{i}")
         star.setProperty("round", True)
-        star.setToolTip("Zu den Favoriten")
+        star.setToolTip(tr("Zu den Favoriten"))
         star.clicked.connect(lambda _=False, s=st, b=star: self._add_favorite(s, b))
         if any(f.url == st.url for f in self.cfg.favorites):
             star.setText("★")
         if st.hls:  # HLS-Stream: Raumfeld kann ihn nicht abspielen
             for b in (play, star):
                 b.setEnabled(False)
-            w.setToolTip("HLS-Stream – den können die Raumfeld-Lautsprecher nicht abspielen")
+            w.setToolTip(tr("HLS-Stream – den können die Raumfeld-Lautsprecher nicht abspielen"))
         lay.addWidget(name, 1)
         lay.addWidget(info)
         lay.addWidget(play)
