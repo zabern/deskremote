@@ -618,3 +618,17 @@ def test_single_room_header_wraps_like_group(qtbot):
     assert shown(h) == f"Badezimmer · {long}"
     assert h.height() >= h.heightForWidth(h.width()) > 2 * h.fontMetrics().height()
     assert '#FFFFFF; font-weight:400">Kreisky' in h.text()  # weiß und normal wie in der Gruppe
+
+
+def test_solo_spotify_room_has_working_play_button(qtbot):
+    p = Popup(default_config())
+    qtbot.addWidget(p)
+    p.set_online(True)
+    p.set_state([RoomState(WOHN, "Wohnzimmer", None, "ACTIVE", True, None, 31, True, can_toggle=True),
+                 RoomState(BAD, "Badezimmer", None, "AUTOMATIC_STANDBY", False, None, 20, True)])
+    solo, idle = btn(p, f"play:{WOHN}"), btn(p, f"play:{BAD}")
+    assert solo.isEnabled() and solo.property("playing") is True
+    assert not idle.isEnabled()
+    with qtbot.waitSignal(p.action) as sig:
+        solo.click()
+    assert sig.args == ["toggle_play", (WOHN,)]

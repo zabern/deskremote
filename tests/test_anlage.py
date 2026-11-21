@@ -413,7 +413,7 @@ def test_refresh_radio_has_no_queue_fields():
     a, host, log = make([config()])
     s = {x.udn: x for x in a.refresh()}[BAD]
     assert s.is_queue is False and s.track is None and s.repeat == "off"
-    assert not any(act in ("GetPositionInfo", "GetTransportSettings") for _, act, _ in log)
+    assert not any(act in ("GetPositionInfo", "GetTransportSettings") for n, act, _ in log if n == ZBAD)
 
 
 def test_play_container_unassigned_standby_wakes_before_zone():
@@ -644,3 +644,51 @@ def test_play_stream_refuses_hls_without_touching_device():
     with pytest.raises(PlayError, match="spielt auf Raumfeld nicht"):
         a.play_stream(BAD, bbc)
     assert log == [] and host.calls == []
+
+
+# --- Einzelraum-Spotify: Raum ohne Zone spielt Spotify am Lautsprecher selbst ---------------
+
+def _solo(power="ACTIVE", spotify=True):
+    return ZoneConfig([Zone(ZBAD, [room(BAD, "Badezimmer")])], [room(WOHN, "Wohnzimmer", power, spotify)])
+
+
+def test_solo_spotify_playing_can_be_paused():
+    a, host, log = make([_solo()], states=("PLAYING",))
+    s = {x.udn: x for x in a.refresh()}[WOHN]
+    assert s.spotify and s.playing and s.can_toggle and s.zone_udn is None
+    a.toggle_play(WOHN)
+    assert log[-1][:2] == (f"{WOHN}-spk", "Pause")
+
+
+def test_solo_spotify_paused_can_resume():
+    a, host, log = make([_solo()], states=("PAUSED_PLAYBACK",))
+    s = {x.udn: x for x in a.refresh()}[WOHN]
+    assert s.can_toggle and not s.playing
+    a.toggle_play(WOHN)
+    assert log[-1][:2] == (f"{WOHN}-spk", "Play")
+
+
+def test_solo_spotify_in_standby_is_left_alone():
+    """Die Spotify-Markierung bleibt nach Spotify-Ende stehen – ein Raum im Standby spielt nichts."""
+    a, host, log = make([_solo(power="AUTOMATIC_STANDBY")], states=("PAUSED_PLAYBACK",))
+    s = {x.udn: x for x in a.refresh()}[WOHN]
+    assert not s.can_toggle and not s.playing
+    assert not any(n == f"{WOHN}-spk" and act == "GetTransportInfo" for n, act, _ in log)
+    with pytest.raises(PlayError):
+        a.toggle_play(WOHN)
+    assert not any(act in ("Play", "Pause") for _, act, _ in log)
+
+
+def test_solo_speaker_in_unknown_state_gets_no_command():
+    a, host, log = make([_solo()], states=("STOPPED",))
+    assert not {x.udn: x for x in a.refresh()}[WOHN].can_toggle
+    with pytest.raises(PlayError):
+        a.toggle_play(WOHN)
+    assert not any(act in ("Play", "Pause") for _, act, _ in log)
+
+
+def test_unassigned_room_without_spotify_stays_without_play():
+    a, host, log = make([_solo(spotify=False)], states=("PLAYING",))
+    assert not {x.udn: x for x in a.refresh()}[WOHN].can_toggle
+    with pytest.raises(PlayError):
+        a.toggle_play(WOHN)

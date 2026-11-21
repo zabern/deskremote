@@ -62,6 +62,11 @@ class RoomState:
     is_queue: bool = False
     shuffle: bool = False
     repeat: str = "off"  # "off" | "all" | "one"
+    can_toggle: bool = False  # Raum ohne Zone, der selbst Spotify spielt: Play/Pause direkt am Lautsprecher
+
+
+# Lautsprecher ohne Zone: nur aus diesen Zuständen heraus Play/Pause senden
+_SPEAKER_TOGGLE_STATES = ("PLAYING", "TRANSITIONING", "PAUSED_PLAYBACK")
 
 
 class PlayError(Exception):
@@ -174,9 +179,33 @@ class Anlage:
                 volume = _int(self._speaker(room).call(RC, "GetVolume", InstanceID=0, Channel="Master").get("CurrentVolume"))
             except UpnpError:
                 pass
-            states.append(RoomState(room.udn, room.name, None, room.power_state, False, None, volume,
-                                    room.spotify_active))
+            playing, extra = self._own_spotify(room)
+            states.append(RoomState(room.udn, room.name, None, room.power_state, playing, None, volume,
+                                    room.spotify_active, **extra))
         return sorted(states, key=lambda s: s.name.lower())
+
+    def _own_spotify(self, room: Room) -> tuple[bool, dict]:
+        """Einzelraum-Modus: Spotify spielt am Lautsprecher selbst, ohne Zone.
+
+        Nur wache Räume mit Spotify-Markierung zählen – die Markierung bleibt nach
+        Spotify-Ende stehen, ein Raum im Standby spielt sicher nichts.
+        """
+        if not room.spotify_active or room.power_state.endswith("STANDBY"):
+            return False, {}
+        try:
+            spk = self._speaker(room)
+            state = spk.call(AVT, "GetTransportInfo", InstanceID=0).get("CurrentTransportState")
+        except UpnpError:
+            return False, {}
+        if state not in _SPEAKER_TOGGLE_STATES:
+            return False, {}
+        extra: dict = {"can_toggle": True}
+        try:
+            track, artist, art = track_from_didl(spk.call(AVT, "GetPositionInfo", InstanceID=0).get("TrackMetaData", ""))
+            extra.update(track=track, artist=artist, art_url=art)
+        except UpnpError:
+            pass  # dann eben nur „Spotify“
+        return state in ("PLAYING", "TRANSITIONING"), extra
 
     def _queue_state(self, dev: UpnpDevice) -> dict:
         """Zusatzfelder, wenn ein Album/Ordner läuft (Raumfeld-Wiedergabeliste)."""
@@ -313,10 +342,15 @@ class Anlage:
     def toggle_play(self, room_udn: str) -> None:
         zc, room = self._fresh(room_udn)
         zone = zc.zone_of(room_udn)
-        if zone is None:
+        if zone is not None:
+            dev = self._renderer(zone.udn)
+        elif room.spotify_active and not room.power_state.endswith("STANDBY"):
+            dev = self._speaker(room)  # Einzelraum-Spotify: der Lautsprecher selbst kann Play/Pause
+        else:
             raise PlayError(tr("In {room} läuft nichts", room=room.name))
-        dev = self._renderer(zone.udn)
         state = dev.call(AVT, "GetTransportInfo", InstanceID=0).get("CurrentTransportState")
+        if zone is None and state not in _SPEAKER_TOGGLE_STATES:
+            raise PlayError(tr("In {room} läuft nichts", room=room.name))  # nie auf unbestätigten Zustand senden
         if state == "PLAYING":
             dev.call(AVT, "Pause", InstanceID=0)
         else:

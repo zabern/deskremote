@@ -354,8 +354,8 @@ class Popup(QWidget):
         play.setObjectName(f"play:{key}")
         play.setProperty("round", True)
         play.setProperty("playing", r.playing)
-        play.setProperty("can_play", r.zone_udn is not None)
-        play.setToolTip("Play/Pause" if r.zone_udn else tr("Hier läuft nichts – Sender wählen"))
+        play.setProperty("can_play", r.zone_udn is not None or r.can_toggle)
+        play.setToolTip("Play/Pause" if r.zone_udn or r.can_toggle else tr("Hier läuft nichts – Sender wählen"))
         play.setCursor(Qt.PointingHandCursor)
         play.clicked.connect(lambda _=False, u=r.udn, b=play: self._toggle(b, u))
         return play
