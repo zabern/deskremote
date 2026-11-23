@@ -1,4 +1,4 @@
-"""Sendersuche über radio-browser.info."""
+"""Sendersuche über TuneIn auf der Raumfeld-Anlage – ☆ legt einen Teufel-Favoriten an."""
 
 from __future__ import annotations
 
@@ -6,48 +6,40 @@ import threading
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
-)
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
-from ..i18n import tr
 from ..core.config import Config, Favorite
-from ..core.radio import SearchError, Station
+from ..i18n import tr
 from .theme import app_icon, PlainLabel, ICON_PLAY, STYLESHEET
 
-COUNTRIES = [("Österreich", "AT"), ("Deutschland", "DE"), ("Schweiz", "CH"), ("Alle Länder", None)]
 DEBOUNCE_MS = 400
 
 
 class SearchWindow(QWidget):
-    play = Signal(object)  # Favorite
-    favorites_changed = Signal()
+    play = Signal(object)  # Favorite (Suchtreffer, direkt abspielen)
+    add_requested = Signal(str)  # Objekt-ID → in die Teufel-Favoriten
     _results_ready = Signal(int, object)  # Generation, Liste oder Fehlertext
 
-    def __init__(self, radio, cfg: Config, save: Callable[[Config], None], run_async: bool = True):
+    def __init__(self, search: Callable[[str], list[Favorite]], cfg: Config, run_async: bool = True):
         super().__init__(None, Qt.Window)
-        self.radio, self.cfg, self.save, self.run_async = radio, cfg, save, run_async
+        self.search, self.cfg, self.run_async = search, cfg, run_async
         self._generation = 0
-        self._stations: list[Station] = []
+        self._hits: list[Favorite] = []
+        self._pending: set[str] = set()
         self.setWindowTitle(tr("Sender suchen"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
         self.resize(460, 520)
 
         root = QVBoxLayout(self)
-        row = QHBoxLayout()
         self.query = QLineEdit()
         self.query.setObjectName("query")
         self.query.setPlaceholderText(tr("Sendername, z. B. FM4"))
-        self.country = QComboBox()
-        self.country.setObjectName("country")
-        for label, code in COUNTRIES:
-            self.country.addItem(tr(label), code)
-        idx = next((i for i, (_, c) in enumerate(COUNTRIES) if c == cfg.search_country), 0)
-        self.country.setCurrentIndex(idx)
-        row.addWidget(self.query, 1)
-        row.addWidget(self.country)
-        root.addLayout(row)
+        root.addWidget(self.query)
+        hint = PlainLabel(tr("Sucht bei TuneIn über die Anlage. ☆ legt den Sender in den Teufel-Favoriten an."))
+        hint.setProperty("muted", True)
+        hint.setWordWrap(True)
+        root.addWidget(hint)
 
         self.status = PlainLabel("")
         self.status.setObjectName("status")
@@ -69,29 +61,22 @@ class SearchWindow(QWidget):
         self._timer.setInterval(DEBOUNCE_MS)
         self._timer.timeout.connect(lambda: self.search_now(self.query.text()))
         self.query.textChanged.connect(lambda _t: self._timer.start())
-        self.country.currentIndexChanged.connect(self._country_changed)
         self._results_ready.connect(self._show_results)
 
     # --- öffentlich -----------------------------------------------------
-    def set_country(self, code: str | None) -> None:
-        idx = next(i for i, (_, c) in enumerate(COUNTRIES) if c == code)
-        self.country.setCurrentIndex(idx)
-
     def search_now(self, text: str) -> None:
         text = text.strip()
         if not text:
             return
         self._generation += 1
-        gen, country = self._generation, self.country.currentData()
+        gen = self._generation
         self.status.setText(tr("Suche …"))
 
         def work():
             try:
-                result: object = self.radio.search(text, country=country)
-            except SearchError as exc:
-                result = str(exc)
+                result: object = self.search(text)
             except Exception:  # noqa: BLE001 – nie auf "Suche …" stehen bleiben
-                result = tr("Suche fehlgeschlagen")
+                result = tr("Suche fehlgeschlagen – ist die Anlage erreichbar?")
             self._results_ready.emit(gen, result)
 
         if self.run_async:
@@ -99,11 +84,18 @@ class SearchWindow(QWidget):
         else:
             work()
 
+    def refresh_stars(self) -> None:
+        """Nach neuer Teufel-Liste: Sterne passend füllen (auch für Änderungen aus der Teufel-App)."""
+        on_anlage = self._targets()
+        self._pending -= on_anlage
+        for star in self.findChildren(QPushButton):
+            target = star.property("target")
+            if target:
+                star.setText("★" if target in on_anlage else ("…" if target in self._pending else "☆"))
+
     # --- intern ---------------------------------------------------------
-    def _country_changed(self) -> None:
-        self.cfg.search_country = self.country.currentData() or ""
-        if self.query.text().strip():
-            self.search_now(self.query.text())
+    def _targets(self) -> set[str]:
+        return {f.target for f in (self.cfg.anlage_favorites or []) if f.on_anlage}
 
     def _clear(self) -> None:
         while self._list.count() > 1:
@@ -119,49 +111,37 @@ class SearchWindow(QWidget):
         if isinstance(result, str):
             self.status.setText(result)
             return
-        self._stations = list(result)
-        self.status.setText("" if self._stations else tr("Keine Sender gefunden"))
-        for i, st in enumerate(self._stations):
-            self._list.insertWidget(i, self._row(i, st))
+        self._hits = list(result)
+        self.status.setText("" if self._hits else tr("Keine Sender gefunden"))
+        for i, hit in enumerate(self._hits):
+            self._list.insertWidget(i, self._row(i, hit))
 
-    def _row(self, i: int, st: Station) -> QWidget:
+    def _row(self, i: int, hit: Favorite) -> QWidget:
         w = QWidget()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(4, 2, 4, 2)
-        name = PlainLabel(st.name)
+        name = PlainLabel(hit.name)
         name.setObjectName(f"name:{i}")
-        info = PlainLabel(f"{st.codec} {st.bitrate}k" if st.bitrate else st.codec)
-        info.setObjectName(f"info:{i}")
-        info.setProperty("muted", True)
-        if st.hls:
-            info.setText((f"{info.text()} · " + tr("spielt auf Raumfeld nicht")).lstrip(" ·"))
         play = QPushButton(ICON_PLAY)
         play.setObjectName(f"play:{i}")
         play.setProperty("round", True)
         play.setProperty("icon_btn", True)
         play.setToolTip(tr("Im Ziel-Raum abspielen"))
-        play.clicked.connect(lambda _=False, s=st: self.play.emit(self.radio.to_favorite(s)))
-        star = QPushButton("☆")
+        play.clicked.connect(lambda _=False, f=hit: self.play.emit(f))
+        star = QPushButton("★" if hit.target in self._targets() else "☆")
         star.setObjectName(f"star:{i}")
         star.setProperty("round", True)
-        star.setToolTip(tr("Zu den Favoriten"))
-        star.clicked.connect(lambda _=False, s=st, b=star: self._add_favorite(s, b))
-        if any(f.url == st.url for f in self.cfg.favorites):
-            star.setText("★")
-        if st.hls:  # HLS-Stream: Raumfeld kann ihn nicht abspielen
-            for b in (play, star):
-                b.setEnabled(False)
-            w.setToolTip(tr("HLS-Stream – den können die Raumfeld-Lautsprecher nicht abspielen"))
+        star.setProperty("target", hit.target)
+        star.setToolTip(tr("Zu den Teufel-Favoriten (auch in der Teufel-App)"))
+        star.clicked.connect(lambda _=False, f=hit, b=star: self._add_favorite(f, b))
         lay.addWidget(name, 1)
-        lay.addWidget(info)
         lay.addWidget(play)
         lay.addWidget(star)
         return w
 
-    def _add_favorite(self, st: Station, button: QPushButton) -> None:
-        if any(f.url == st.url for f in self.cfg.favorites):
-            return
-        self.cfg.favorites.append(Favorite(st.name, st.url, st.favicon or ""))
-        self.save(self.cfg)
-        button.setText("★")
-        self.favorites_changed.emit()
+    def _add_favorite(self, hit: Favorite, button: QPushButton) -> None:
+        if hit.target in self._targets():
+            return  # erneutes Klicken auf „…“ ist harmlos: die Anlage legt nie doppelt an
+        self._pending.add(hit.target)
+        button.setText("…")  # die Anlage bestätigt mit der neuen Liste
+        self.add_requested.emit(hit.target)

@@ -183,4 +183,35 @@ EN: dict[str, str] = {
     "Dienst {service} nicht vorhanden": "Service {service} not available",
     "{action} fehlgeschlagen: {code} {desc}": "{action} failed: {code} {desc}",
     "{action}: ungültige Antwort (HTTP {status})": "{action}: invalid answer (HTTP {status})",
+    # Teufel-Favoriten (gemeinsame Liste mit der Teufel-App)
+    "(nicht mehr in der Liste)": "(no longer in the list)",
+    "Diese Favoriten werden auf der Anlage entfernt – auch in der Teufel-App:\n\n{names}":
+        "These favorites will be removed from the Raumfeld system – also in the Teufel app:\n\n{names}",
+    "Diese Liste ist dieselbe wie in der Teufel-App. Neue Favoriten über ☆ in Sendersuche oder Musik.":
+        "This is the same list as in the Teufel app. Add new favorites with ☆ in station search or music.",
+    "Entfernen": "Remove",
+    "Entfernt den Favoriten auch in der Teufel-App": "Also removes the favorite in the Teufel app",
+    "Favorit {n} spielt:": "Favorite {n} plays:",
+    "Geht bei Teufel-Favoriten nicht – die Anlage kann Favoriten nicht umsortieren oder umbenennen.":
+        "Not possible for Teufel favorites – the system can't reorder or rename favorites.",
+    "Platz {n} der Liste": "Position {n} in the list",
+    "Raumfeld-Medienserver nicht gefunden": "Raumfeld media server not found",
+    "Suche fehlgeschlagen – ist die Anlage erreichbar?": "Search failed – is the Raumfeld system reachable?",
+    "Sucht bei TuneIn über die Anlage. ☆ legt den Sender in den Teufel-Favoriten an.":
+        "Searches TuneIn through the Raumfeld system. ☆ adds the station to the Teufel favorites.",
+    "Tastenkürzel neu festlegen (Einstellungen): {names} steht nicht in den Teufel-Favoriten":
+        "Please set the hotkeys again (Settings): {names} is not among the Teufel favorites",
+    "Teufel-Favorit": "Teufel favorite",
+    "Teufel-Favorit · Album": "Teufel favorite · album",
+    "Teufel-Favorit · Künstler": "Teufel favorite · artist",
+    "Teufel-Favorit · Sender": "Teufel favorite · station",
+    "Teufel-Favorit · Titel": "Teufel favorite · track",
+    "Teufel-Favorit · Wiedergabeliste": "Teufel favorite · playlist",
+    "Teufel-Favoriten": "Teufel favorites",
+    "Teufel-Favoriten brauchen einen Sender der Anlage – bitte über die Sendersuche (☆) anlegen.":
+        "Teufel favorites need a station from the system – please add them via station search (☆).",
+    "Zu den Teufel-Favoriten (auch in der Teufel-App)": "Add to Teufel favorites (also in the Teufel app)",
+    "{name} konnte nicht starten": "{name} could not start",
+    "{name} konnte nicht starten ({error})": "{name} could not start ({error})",
+    "{name} steht nicht mehr in den Teufel-Favoriten": "{name} is no longer among the Teufel favorites",
 }

@@ -62,7 +62,7 @@ class Tray(QSystemTrayIcon):
 
     def _build_menu(self) -> None:
         self._menu.clear()
-        for fav in self.cfg.favorites:
+        for fav in self.cfg.active_favorites():
             act = QAction(f"▶ {fav.name.replace('&', '&&')}", self._menu)  # „&“ wörtlich, kein Kürzel
             act.setEnabled(self._online and bool(self.cfg.target_room))
             act.triggered.connect(lambda _=False, f=fav: self.action.emit("play_favorite", (self.cfg.target_room, f)))

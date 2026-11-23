@@ -113,6 +113,7 @@ class Popup(QWidget):
     open_music = Signal()
     open_settings = Signal()
     open_couple = Signal()
+    shown = Signal()  # z. B. um die Teufel-Favoriten frisch zu holen
 
     def __init__(self, cfg: Config, covers=None):
         super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -192,6 +193,10 @@ class Popup(QWidget):
         self.set_favorites()
         self.set_online(False)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.shown.emit()
+
     # --- öffentlich -----------------------------------------------------
     def set_online(self, online: bool) -> None:
         self._online = online
@@ -236,7 +241,7 @@ class Popup(QWidget):
             if w is not None:
                 w.setParent(None)
                 w.deleteLater()
-        for i, fav in enumerate(self.cfg.favorites):
+        for i, fav in enumerate(self.cfg.active_favorites()):
             b = FavButton(fav.name)
             b.setObjectName(f"fav:{i}")
             b.setProperty("fav", True)

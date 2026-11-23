@@ -3,85 +3,39 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QListWidget, QPushButton
 
 from deskremote.core.anlage import RoomState
 from deskremote.core.config import Favorite, default_config
-from deskremote.core.radio import SearchError, Station
 from deskremote.ui.couple import CoupleDialog
 from deskremote.ui.search import SearchWindow
 from deskremote.ui.settings import SettingsWindow
 
-KRONE = Station("1", "KroneHit Radio", "http://onair-ha1.krone.at/kronehit64.aac", "AAC", 163, 2295, "AT")
 
 
-class FakeRadio:
-    def __init__(self, result=None, error=False):
-        self.result = result if result is not None else [KRONE]
-        self.error = error
-        self.queries = []
-
-    def search(self, query, country="AT", limit=30):
-        self.queries.append((query, country))
-        if self.error:
-            raise SearchError("Senderverzeichnis nicht erreichbar")
-        return self.result
-
-    @staticmethod
-    def to_favorite(st):
-        return Favorite(st.name, st.url)
+KRONE = Favorite("KroneHit Radio", "dlna-playsingle://uuid%3Ams?sid=x&iid=0%2FRadioTime%2FSearch%2Fs-s1",
+                 "https://cdn.example/k.png", "anlage", "", None, 0, "", "0/RadioTime/Search/s-s1", "station")
 
 
-def search_window(qtbot, radio, saved=None):
+def search_window(qtbot, hits=None, error=False):
     cfg = default_config()
-    w = SearchWindow(radio, cfg, save=(saved.append if saved is not None else lambda c: None), run_async=False)
+
+    def search(text):
+        if error:
+            raise RuntimeError("offline")
+        return hits if hits is not None else [KRONE]
+
+    w = SearchWindow(search, cfg, run_async=False)
     qtbot.addWidget(w)
     return w, cfg
 
 
-def test_search_uses_country_filter(qtbot):
-    radio = FakeRadio()
-    w, cfg = search_window(qtbot, radio)
-    w.search_now("kronehit")
-    assert radio.queries == [("kronehit", "AT")]
-    w.set_country(None)
-    w.search_now("kronehit")
-    assert radio.queries[-1] == ("kronehit", None)
 
 
-def test_search_play_emits_favorite(qtbot):
-    w, cfg = search_window(qtbot, FakeRadio())
-    w.search_now("kronehit")
-    with qtbot.waitSignal(w.play) as blocker:
-        qtbot.mouseClick(w.findChild(QPushButton, "play:0"), Qt.LeftButton)
-    assert blocker.args == [Favorite("KroneHit Radio", KRONE.url)]
 
 
-def test_search_star_adds_favorite_and_saves(qtbot):
-    saved = []
-    w, cfg = search_window(qtbot, FakeRadio(), saved)
-    w.search_now("kronehit")
-    with qtbot.waitSignal(w.favorites_changed):
-        qtbot.mouseClick(w.findChild(QPushButton, "star:0"), Qt.LeftButton)
-    assert cfg.favorites[-1] == Favorite("KroneHit Radio", KRONE.url, "")
-    assert saved and saved[-1] is cfg
 
 
-def test_search_star_does_not_duplicate(qtbot):
-    w, cfg = search_window(qtbot, FakeRadio())
-    w.search_now("kronehit")
-    btn = w.findChild(QPushButton, "star:0")
-    qtbot.mouseClick(btn, Qt.LeftButton)
-    qtbot.mouseClick(btn, Qt.LeftButton)
-    assert sum(1 for f in cfg.favorites if f.url == KRONE.url) == 1
 
 
-def test_search_error_shows_message(qtbot):
-    w, cfg = search_window(qtbot, FakeRadio(error=True))
-    w.search_now("x")
-    assert w.findChild(QLabel, "status").text() == "Senderverzeichnis nicht erreichbar"
 
 
-def test_search_empty_result_message(qtbot):
-    w, cfg = search_window(qtbot, FakeRadio(result=[]))
-    w.search_now("gibtsnicht")
-    assert w.findChild(QLabel, "status").text() == "Keine Sender gefunden"
 
 
 def settings_window(qtbot, saved):
@@ -142,14 +96,6 @@ ROOMS = [
 
 
 
-def test_search_unexpected_error_shows_message(qtbot):
-    class Broken(FakeRadio):
-        def search(self, query, country="AT", limit=30):
-            raise RuntimeError("unerwartet")
-
-    w, cfg = search_window(qtbot, Broken())
-    w.search_now("x")
-    assert w.findChild(QLabel, "status").text() == "Suche fehlgeschlagen"
 
 
 def test_settings_emits_closed(qtbot):
@@ -162,8 +108,8 @@ def test_settings_emits_closed(qtbot):
 
 def test_dialog_labels_are_plain_text(qtbot):
     from PySide6.QtCore import Qt as _Qt
-    evil = Station("9", "FM4 <img src='file://203.0.113.5/s/a.png'>", "http://x", "MP3", 128, 1, "AT")
-    w, cfg = search_window(qtbot, FakeRadio(result=[evil]))
+    evil = Favorite("FM4 <img src='file://203.0.113.5/s/a.png'>", KRONE.url, kind="anlage", target="0/RadioTime/Search/x")
+    w, cfg = search_window(qtbot, [evil])
     w.search_now("fm4")
     s = SettingsWindow(default_config(), save=lambda c: None)
     c = CoupleDialog([RoomState("uuid:a", "<b>A</b>", None, "ACTIVE", False, None, 1, False)], None)
@@ -185,7 +131,7 @@ def test_settings_title_and_layout(qtbot):
 
 def test_windows_have_app_icon(qtbot):
     s = SettingsWindow(default_config(), save=lambda c: None)
-    w, cfg = search_window(qtbot, FakeRadio())
+    w, cfg = search_window(qtbot)
     c = CoupleDialog(ROOMS, None)
     for win in (s, w, c):
         qtbot.addWidget(win)
@@ -275,20 +221,6 @@ def test_checkmark_file_is_private_per_process(qtbot, tmp_path, monkeypatch):
 
 
 
-def test_star_while_settings_open_survives_settings_save(qtbot):
-    """Bug v1.0.0: Einstellungen schrieben ihre alte Favoriten-Kopie zurück."""
-    cfg = default_config()
-    saved = []
-    settings = SettingsWindow(cfg, save=saved.append)
-    search = SearchWindow(FakeRadio(), cfg, save=saved.append, run_async=False)
-    qtbot.addWidget(settings)
-    qtbot.addWidget(search)
-    search.favorites_changed.connect(settings.sync_new_favorites)  # so verdrahtet es die App
-    search.search_now("kronehit")
-    qtbot.mouseClick(search.findChild(QPushButton, "star:0"), Qt.LeftButton)
-    assert any(KRONE.name in settings.list.item(i).text() for i in range(settings.list.count()))
-    qtbot.mouseClick(settings.findChild(QPushButton, "save"), Qt.LeftButton)
-    assert any(f.url == KRONE.url for f in cfg.favorites)
 
 
 def test_sync_keeps_unsaved_edits_in_settings(qtbot):
@@ -339,12 +271,6 @@ def test_settings_online_covers_checkbox(qtbot):
     assert cfg.online_covers is False
 
 
-def test_star_keeps_logo(qtbot):
-    st = Station("7", "Radio Logo", "http://logo.example/stream", "MP3", 128, 1, "AT", favicon="https://logo.example/l.png")
-    w, cfg = search_window(qtbot, FakeRadio(result=[st]))
-    w.search_now("logo")
-    qtbot.mouseClick(w.findChild(QPushButton, "star:0"), Qt.LeftButton)
-    assert cfg.favorites[-1].logo == "https://logo.example/l.png"
 
 
 def test_settings_save_keeps_logos(qtbot):
@@ -424,17 +350,6 @@ def test_settings_checkbox_has_white_check(qtbot):
     assert theme.checkbox_style() in w.styleSheet()
 
 
-
-def test_search_marks_hls_and_disables_buttons(qtbot):
-    bbc = Station("2", "BBC Radio 6 Music", "http://x/bbc_6music.m3u8", "AAC", 320, 9, "GB", hls=True)
-    w, cfg = search_window(qtbot, FakeRadio([KRONE, bbc]))
-    w.search_now("bbc")
-    info = w.findChild(QLabel, "info:1")
-    assert "spielt auf Raumfeld nicht" in info.text()
-    assert not w.findChild(QPushButton, "play:1").isEnabled()
-    assert not w.findChild(QPushButton, "star:1").isEnabled()
-    assert w.findChild(QPushButton, "play:0").isEnabled()
-    assert "spielt auf Raumfeld nicht" not in w.findChild(QLabel, "info:0").text()
 
 
 

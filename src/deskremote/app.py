@@ -12,8 +12,8 @@ import httpx
 from PySide6.QtCore import QLockFile, QObject, QProcess, Signal
 from PySide6.QtWidgets import QApplication
 
-from .core.anlage import Anlage
-from .core.config import load_config, needs_logo_lookup, save_config
+from .core.anlage import Anlage, station_favorite
+from .core.config import load_config, needs_logo_lookup, save_config, take_anlage_favorites
 from .core.radio import RadioBrowser
 from .i18n import set_language, tr
 from .log import get_logger, setup_logging
@@ -71,6 +71,8 @@ class App:
         self.worker.online_changed.connect(self.popup.set_online)
         self.worker.online_changed.connect(self.tray.set_online)
         self.worker.error.connect(self.tray.notify)
+        self.worker.favorites_loaded.connect(self._favorites_loaded)
+        self.popup.shown.connect(lambda: self.submit("load_favorites", ()))
         self.popup.action.connect(self.submit)
         self.tray.action.connect(self.submit)
         self.popup.target_changed.connect(lambda _u: save_config(self.cfg))
@@ -129,18 +131,26 @@ class App:
             w.config_changed.connect(self.config_changed)
             w.closed.connect(self.register_hotkeys)
             w.restart_requested.connect(self.restart)
+            w.remove_on_anlage.connect(self._remove_on_anlage)
             return w
         self.hotkeys.unregister_all()  # sonst fangen die globalen Kürzel die Tasten beim Neubelegen ab
         self._show("settings", make)
 
     def open_search(self) -> None:
         def make():
-            w = SearchWindow(self.radio, self.cfg, save=save_config)
+            w = SearchWindow(self._search_stations, self.cfg)
             w.play.connect(self.play_on_target)
-            w.favorites_changed.connect(self.popup.set_favorites)
-            w.favorites_changed.connect(self._sync_settings)
+            w.add_requested.connect(lambda object_id: self.submit("add_favorite", (object_id,)))
             return w
         self._show("search", make)
+
+    def _search_stations(self, text: str) -> list:
+        """TuneIn-Suche über die verbundene Anlage (läuft im Such-Thread)."""
+        anlage = self.worker.anlage
+        if anlage is None:
+            raise RuntimeError("offline")
+        udn = anlage.media_server().udn
+        return [station_favorite(udn, hit) for hit in anlage.search_stations(text)]
 
     def _find_media_servers(self) -> list:
         host = self.cfg.last_host or discover_host(None, self.client)
@@ -169,6 +179,7 @@ class App:
             w = MusicWindow([], self.covers, self.cfg, save=save_config)
             w.play.connect(self.play_container)
             w.play_shuffled.connect(self.play_container_shuffled)
+            w.add_requested.connect(lambda object_id: self.submit("add_favorite", (object_id,)))
             w.favorites_changed.connect(self.popup.set_favorites)
             w.favorites_changed.connect(self._sync_settings)
             w.discover(self._find_media_servers)
@@ -194,6 +205,26 @@ class App:
     def _logos_done(self) -> None:
         save_config(self.cfg)
         self.popup.set_favorites()
+
+    def _favorites_loaded(self, favs: list) -> None:
+        """Teufel-Favoriten von der Anlage: übernehmen und überall neu zeigen (nur bei Änderung)."""
+        changed, unmatched = take_anlage_favorites(self.cfg, favs)
+        if unmatched:
+            self.tray.notify(tr("Tastenkürzel neu festlegen (Einstellungen): {names} steht nicht in den Teufel-Favoriten",
+                                names=", ".join(unmatched)))
+        for key in ("search", "music"):  # immer, damit ein „…“ nach doppeltem ☆ nicht hängen bleibt
+            win = self._windows.get(key)
+            if win is not None and win.isVisible() and hasattr(win, "refresh_stars"):
+                win.refresh_stars()
+        if not changed:
+            return
+        save_config(self.cfg)
+        self.popup.set_favorites()
+        self._sync_settings()
+
+    def _remove_on_anlage(self, targets: list) -> None:
+        for target in targets:
+            self.submit("remove_favorite", (target,))
 
     def _sync_settings(self) -> None:
         win = self._windows.get("settings")

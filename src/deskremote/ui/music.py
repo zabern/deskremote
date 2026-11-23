@@ -45,6 +45,7 @@ class MusicWindow(QWidget):
     _meta_ready = Signal(str, str, bool)
     _servers_ready = Signal(object)
     favorites_changed = Signal()
+    add_requested = Signal(str)  # Objekt-ID → in die Teufel-Favoriten (sobald die Anlage-Liste da ist)
     _fav_ready = Signal(object, str)  # Favorite oder None, objectName des Sterns
 
     def __init__(self, servers: list, covers, cfg: Config, save: Callable[[Config], None],
@@ -388,7 +389,8 @@ class MusicWindow(QWidget):
             if view is not None and view.container is not None and self._raumfeld_source():
                 c = view.container
                 name = f"{item.title} · {item.artist}" if item.artist else item.title
-                lay.addWidget(self._star(f"startrack:{index}", "track", c.id, index, name, c.art_url))
+                lay.addWidget(self._star(f"startrack:{index}", "track", c.id, index, name, c.art_url,
+                                         object_id=item.id))
         return w
 
     # --- Favoriten ------------------------------------------------------
@@ -397,12 +399,44 @@ class MusicWindow(QWidget):
 
     def _container_star(self, index: int, c: MediaContainer) -> QPushButton:
         if c.kind == "artist":
-            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, tr("{name} · Zufall", name=c.title), c.art_url)
+            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, tr("{name} · Zufall", name=c.title),
+                              c.art_url, object_id=c.id)
         name = f"{c.title} · {c.artist}" if c.artist else c.title
-        return self._star(f"star:{index}", "album", c.id, 0, name, c.art_url)
+        return self._star(f"star:{index}", "album", c.id, 0, name, c.art_url, object_id=c.id)
+
+    # Teufel-Favoriten ---------------------------------------------------
+    def _anlage_mode(self) -> bool:
+        return self.cfg.anlage_favorites is not None
+
+    def _on_anlage(self, object_id: str) -> bool:
+        """Steht das Objekt schon in den Teufel-Favoriten? Alben auch unter ihrem zweiten Pfad erkennen
+        (…/Albums/A+X und …/Artists/A/A+X enden gleich)."""
+        targets = {f.target for f in self.cfg.anlage_favorites or [] if f.on_anlage}
+        if object_id in targets:
+            return True
+        tail = object_id.rsplit("/", 1)[-1]
+        return (object_id.startswith("0/My Music/") and "+" in tail
+                and any(t.startswith("0/My Music/") and t.rsplit("/", 1)[-1] == tail for t in targets))
+
+    def refresh_stars(self) -> None:
+        """Nach neuer Teufel-Liste (auch aus der Teufel-App): Sterne passend füllen."""
+        if not self._anlage_mode():
+            return
+        for star in self.findChildren(QPushButton):
+            target = star.property("target")
+            if target:
+                star.setText("★" if self._on_anlage(target) else "☆")
 
     def _star(self, object_name: str, kind: str, container_id: str, start: int, name: str,
-              cover: str | None) -> QPushButton:
+              cover: str | None, object_id: str = "") -> QPushButton:
+        if self._anlage_mode() and object_id:
+            b = QPushButton("★" if self._on_anlage(object_id) else "☆")
+            b.setObjectName(object_name)
+            b.setProperty("target", object_id)
+            b.setProperty("round", True)
+            b.setToolTip(tr("Zu den Teufel-Favoriten (auch in der Teufel-App)"))
+            b.clicked.connect(lambda _=False: self._add_to_anlage(object_id, b))
+            return b
         server = self._server()
         url = container_uri(server.udn, container_id, start) if server is not None else ""
         b = QPushButton("★" if self._fav_exists(kind, url) else "☆")
@@ -412,6 +446,13 @@ class MusicWindow(QWidget):
         b.setToolTip(tr("Als Favorit speichern"))
         b.clicked.connect(lambda _=False: self._add_favorite(object_name, kind, container_id, start, name, cover))
         return b
+
+    def _add_to_anlage(self, object_id: str, button: QPushButton) -> None:
+        server = self._server()
+        if server is None or not server.is_raumfeld or self._on_anlage(object_id):
+            return
+        button.setText("…")  # die Anlage bestätigt mit der neuen Liste
+        self.add_requested.emit(object_id)
 
     def _add_favorite(self, star_name: str, kind: str, container_id: str, start: int, name: str,
                       cover: str | None) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -12,9 +13,14 @@ from ..i18n import LANGUAGES, system_language
 
 
 MUSIC_KINDS = ("album", "track", "artist")
+ANLAGE = "anlage"  # Favorit der Teufel-App (liegt auf der Anlage, nicht in dieser Datei)
+ANLAGE_SUBS = ("station", "album", "artist", "track", "playlist", "other")
+HOTKEY_SLOTS = 3
 MAX_META = 16_000  # DIDL eines Albums ist ~1–2 KB; mehr ist kein echter Eintrag
 MAX_COUNT = 100_000  # Titel je Künstler – mehr ist kein echter Eintrag
 _PLAYCONTAINER = "dlna-playcontainer://"
+_PLAYSINGLE = "dlna-playsingle://"
+_ANLAGE_ENTRY = re.compile(r"0/Favorites/MyFavorites/[^/]+")
 
 
 @dataclass
@@ -26,15 +32,29 @@ class Favorite:
     meta: str = ""  # Musik: DIDL-Metadaten für SetAVTransportURI
     cover: str | None = None  # Musik: Cover-Adresse (Raumfeld-Host)
     count: int = 0  # Künstler: Titelanzahl für den zufälligen Einstieg
+    ref: str = ""  # Teufel-Favorit: Eintrag auf der Anlage (0/Favorites/MyFavorites/…), wechselt beim Neuanlegen
+    target: str = ""  # Teufel-Favorit: Ziel-Objekt (z. B. 0/RadioTime/Search/s-s8235) – bleibt gleich
+    sub: str = ""  # Teufel-Favorit: "station", "album", "artist", …
 
     @property
     def is_music(self) -> bool:
+        if self.kind == ANLAGE:
+            return self.sub != "station"
         return self.kind != "stream"
+
+    @property
+    def on_anlage(self) -> bool:
+        return self.kind == ANLAGE
+
+    @property
+    def key(self) -> str:
+        """Bleibende Kennung (für Kurzwahl-Belegung und Sterne): Ziel-Objekt bzw. Adresse."""
+        return self.target if self.kind == ANLAGE and self.target else self.url
 
 
 def needs_logo_lookup(fav: Favorite) -> bool:
-    """Senderlogo nachschlagen? Nur für Sender, die noch nie gesucht wurden."""
-    return fav.logo is None and not fav.is_music
+    """Senderlogo nachschlagen? Nur für eigene Sender, die noch nie gesucht wurden."""
+    return fav.logo is None and fav.kind == "stream"
 
 
 def _http_or_none(value: object, what: str) -> str | None:
@@ -74,6 +94,36 @@ def _favorite_from_dict(f: object) -> Favorite:
     return Favorite(f["name"], url, logo, kind, meta, _http_or_none(f.get("cover"), "Cover"), count)
 
 
+def _anlage_favorite_from_dict(f: object) -> Favorite | None:
+    """Zwischengespeicherter Teufel-Favorit; Ungültiges wird verworfen, nie die ganze Config."""
+    if not isinstance(f, dict) or f.get("kind") != ANLAGE:
+        return None
+    name, url, ref, target, sub = (f.get(k) for k in ("name", "url", "ref", "target", "sub"))
+    if not all(isinstance(v, str) for v in (name, url, ref, target, sub)):
+        return None
+    if not url.startswith((_PLAYSINGLE, _PLAYCONTAINER)) or not _ANLAGE_ENTRY.fullmatch(ref):
+        return None
+    if not target.startswith("0/") or target.startswith("0/Favorites/") or sub not in ANLAGE_SUBS:
+        return None
+    try:
+        logo = _http_or_none(f.get("logo"), "Logo")
+        cover = _http_or_none(f.get("cover"), "Cover")
+    except TypeError:
+        return None
+    return Favorite(name[:200], url, logo if logo is not None else "", ANLAGE, "", cover, 0, ref, target, sub)
+
+
+def _anlage_favorites(value: object) -> list[Favorite] | None:
+    if not isinstance(value, list):
+        return None
+    return [fav for f in value if (fav := _anlage_favorite_from_dict(f)) is not None]
+
+
+def _hotkey_favorites(value: object) -> list[str]:
+    slots = [v if isinstance(v, str) else "" for v in value] if isinstance(value, list) else []
+    return (slots + [""] * HOTKEY_SLOTS)[:HOTKEY_SLOTS]
+
+
 def _default_favorites() -> list[Favorite]:
     return [
         Favorite("FM4", "https://orf-live.ors-shoutcast.at/fm4-q2a"),
@@ -106,6 +156,22 @@ class Config:
     online_covers: bool = True  # fehlende Cover bei MusicBrainz suchen
     music_source: str | None = None  # zuletzt gewählte Musikquelle (UDN)
     language: str = "de"  # Oberflächensprache, siehe i18n.LANGUAGES
+    # Teufel-Favoriten: None = noch nie von der Anlage gelesen → bis dahin gilt die eigene Liste oben.
+    # Eigener Schlüssel, damit ältere DeskRemote-Versionen die Datei weiter lesen können.
+    anlage_favorites: list[Favorite] | None = None
+    hotkey_favorites: list[str] = field(default_factory=lambda: [""] * HOTKEY_SLOTS)  # Ziel je Kürzel, "" = Platz
+
+    def active_favorites(self) -> list[Favorite]:
+        """Was Fenster, Tray und Kürzel zeigen: die Teufel-Favoriten, sobald sie einmal gelesen wurden."""
+        return self.anlage_favorites if self.anlage_favorites is not None else self.favorites
+
+    def hotkey_favorite(self, slot: int) -> Favorite | None:
+        """Favorit für Strg+Alt+1–3: festgelegtes Ziel, sonst der Platz in der Liste."""
+        favs = self.active_favorites()
+        key = self.hotkey_favorites[slot] if 0 <= slot < len(self.hotkey_favorites) else ""
+        if key:
+            return next((f for f in favs if f.key == key), None)
+        return favs[slot] if 0 <= slot < len(favs) else None
 
 
 def default_config() -> Config:
@@ -180,6 +246,8 @@ def _from_dict(data: object) -> Config:
         online_covers=_bool(data.get("online_covers", True)),
         music_source=_opt_str(data.get("music_source")),
         language=language,
+        anlage_favorites=_anlage_favorites(data.get("anlage_favorites")),
+        hotkey_favorites=_hotkey_favorites(data.get("hotkey_favorites")),
     )
 
 
@@ -189,3 +257,39 @@ def save_config(cfg: Config, path: Path | None = None) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(asdict(cfg), ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)  # atomar: nie eine halb geschriebene Datei
+
+
+def _norm(text: str) -> str:
+    t = text.casefold()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        t = t.replace(a, b)
+    return "".join(ch for ch in t if ch.isalnum())
+
+
+def _same_favorite(old: Favorite, fav: Favorite) -> bool:
+    """Alter eigener Favorit ↔ Teufel-Favorit: gleiche Adresse oder eindeutig gleicher Name."""
+    if old.url == fav.url:
+        return True
+    a, b = _norm(old.name), _norm(fav.name)
+    return len(a) >= 3 and len(b) >= 3 and (a == b or a in b or b in a)
+
+
+def take_anlage_favorites(cfg: Config, favs: list[Favorite]) -> tuple[bool, list[str]]:
+    """Frische Teufel-Favoriten übernehmen.
+
+    Beim allerersten Mal werden die Kürzel Strg+Alt+1–3 aus der bisherigen Liste vorbelegt, sofern
+    ein Teufel-Favorit eindeutig passt – sonst würden sie still auf andere Sender springen.
+    Liefert (geändert?, Namen alter Kürzel-Favoriten ohne eindeutigen Treffer)."""
+    first = cfg.anlage_favorites is None
+    unmatched: list[str] = []
+    if first and not any(cfg.hotkey_favorites):
+        for slot, old in enumerate(cfg.favorites[:HOTKEY_SLOTS]):
+            hits = [f for f in favs if _same_favorite(old, f)]
+            if len(hits) == 1:
+                cfg.hotkey_favorites[slot] = hits[0].key
+            else:  # alte Adresse behalten: Kürzel spielt nichts Falsches, Einstellungen zeigen „nicht mehr da“
+                cfg.hotkey_favorites[slot] = old.key
+                unmatched.append(old.name)
+    changed = first or favs != cfg.anlage_favorites
+    cfg.anlage_favorites = list(favs)
+    return changed, unmatched
