@@ -59,7 +59,7 @@ Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode g
 
 ## Bekannte Grenzen
 
-- **HLS-Sender** (Adressen mit `.m3u8`, z. B. alle BBC-Sender) kann Raumfeld nicht abspielen. DeskRemote schickt solche Adressen aus alten eigenen Favoriten nie an die Anlage; TuneIn-Sender löst die Anlage selbst auf.
+- **HLS-Adressen** (`.m3u8`) kann Raumfeld nicht direkt abspielen; DeskRemote schickt solche Adressen aus alten eigenen Favoriten nie an die Anlage. Über die TuneIn-Suche wählt die Anlage selbst einen passenden Stream – so spielen auch BBC-Sender.
 - Senderlogos im SVG-Format werden aus Sicherheitsgründen nicht angezeigt (siehe Sicherheit).
 
 ## Tastenkürzel (Standard, in den Einstellungen änderbar)
