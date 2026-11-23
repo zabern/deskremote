@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from ..i18n import tr
 from ..raumfeld import favorites as rf
-from ..raumfeld.didl import didl_for_stream, title_from_didl, track_from_didl
+from ..raumfeld.didl import didl_for_stream, item_id_from_didl, title_from_didl, track_from_didl
 from ..raumfeld.host import RaumfeldHost
 from ..raumfeld.media import MediaServer, with_start_index
 from ..raumfeld.models import MEDIA_RENDERER, MEDIA_SERVER, Device, Room, ZoneConfig
@@ -65,6 +65,7 @@ class RoomState:
     shuffle: bool = False
     repeat: str = "off"  # "off" | "all" | "one"
     can_toggle: bool = False  # Raum ohne Zone, der selbst Spotify spielt: Play/Pause direkt am Lautsprecher
+    track_id: str | None = None  # Musik-Wiedergabeliste: Bibliotheks-ID des laufenden Titels
 
 
 # Lautsprecher ohne Zone: nur aus diesen Zuständen heraus Play/Pause senden
@@ -228,10 +229,11 @@ class Anlage:
 
     def _queue_state(self, dev: UpnpDevice) -> dict:
         """Zusatzfelder, wenn ein Album/Ordner läuft (Raumfeld-Wiedergabeliste)."""
-        track, artist, art = track_from_didl(dev.call(AVT, "GetPositionInfo", InstanceID=0).get("TrackMetaData", ""))
+        meta = dev.call(AVT, "GetPositionInfo", InstanceID=0).get("TrackMetaData", "")
+        track, artist, art = track_from_didl(meta)
         shuffle, repeat = parse_play_mode(dev.call(AVT, "GetTransportSettings", InstanceID=0).get("PlayMode"))
         return {"track": track, "artist": artist, "art_url": art, "is_queue": True,
-                "shuffle": shuffle, "repeat": repeat}
+                "shuffle": shuffle, "repeat": repeat, "track_id": item_id_from_didl(meta)}
 
     # --- Aktionen -------------------------------------------------------
     def _ensure_zone(self, zc: ZoneConfig, room: Room):
@@ -344,6 +346,11 @@ class Anlage:
         entry = rf.find_by_ref(rf.list_favorites(server), target)
         if entry is not None:
             rf.remove_favorite(server, entry.id)
+        return self.favorites()
+
+    def reorder_favorites(self, targets: list[str]) -> list[Favorite]:
+        """Teufel-Favoriten in diese Reihenfolge bringen (wirkt auch in der Teufel-App)."""
+        rf.reorder_favorites(self.media_server(), list(targets))
         return self.favorites()
 
     def search_stations(self, text: str) -> list[rf.StationHit]:

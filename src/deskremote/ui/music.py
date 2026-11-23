@@ -20,7 +20,7 @@ from ..raumfeld.media import (
     ALBUMS, ARTISTS, FOLDERS, PAGE_SIZE, SEARCH_ALBUMS, SEARCH_ARTISTS, MediaContainer, Page, container_uri,
     normalize_raumfeld_album,
 )
-from .theme import ICON_PLAY, STYLESHEET, PlainLabel, app_icon
+from .theme import ICON_PAUSE, ICON_PLAY, STYLESHEET, PlainLabel, app_icon
 
 DEBOUNCE_MS = 400
 ROOT = "0"  # Wurzel fremder DLNA-Server
@@ -38,6 +38,14 @@ class View:
     fetched: int = 0  # roh vom Server erhaltene Einträge (Grundlage fürs Nachladen)
 
 
+def track_key(object_id: str | None) -> str:
+    """Kennung eines Titels unabhängig vom Pfad: Raumfeld führt ihn unter …/Albums/… und
+    …/Artists/…, das letzte Stück (eine Prüfsumme) ist gleich."""
+    if not object_id or not object_id.startswith("0/My Music/"):
+        return object_id or ""
+    return object_id.rsplit("/", 1)[-1]
+
+
 class MusicWindow(QWidget):
     play = Signal(str, str)  # Transport-URI, Metadaten
     play_shuffled = Signal(str, str)  # dito, im Zufallsmodus (Künstler: alle Titel)
@@ -45,6 +53,7 @@ class MusicWindow(QWidget):
     _meta_ready = Signal(str, str, bool)
     _servers_ready = Signal(object)
     favorites_changed = Signal()
+    toggle_requested = Signal()  # Play/Pause im Ziel-Raum (beim gerade laufenden Titel)
     add_requested = Signal(str)  # Objekt-ID → in die Teufel-Favoriten (sobald die Anlage-Liste da ist)
     _fav_ready = Signal(object, str)  # Favorite oder None, objectName des Sterns
 
@@ -61,6 +70,7 @@ class MusicWindow(QWidget):
         self._generation = 0
         self._loading = False
         self._cover_labels: dict[str, PlainLabel] = {}
+        self._now: tuple[str | None, bool] = (None, False)  # (Titel-Kennung, spielt?) im Ziel-Raum
         self.setWindowTitle(tr("Musik"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
@@ -382,8 +392,9 @@ class MusicWindow(QWidget):
             play.setObjectName(f"playtrack:{index}")
             play.setProperty("round", True)
             play.setProperty("icon_btn", True)
-            play.setToolTip(tr("Ab diesem Titel abspielen"))
-            play.clicked.connect(lambda _=False, i=index: self._play_view(i))
+            play.setProperty("track_key", track_key(item.id))
+            play.clicked.connect(lambda _=False, i=index, b=play: self._track_clicked(i, b))
+            self._style_track_button(play)
             lay.addWidget(play)
             view = self._stack[-1] if self._stack else None
             if view is not None and view.container is not None and self._raumfeld_source():
@@ -513,6 +524,39 @@ class MusicWindow(QWidget):
         label = self._cover_labels.get(key)
         if label is not None:
             label.setPixmap(pix)
+
+    # --- Laufender Titel ----------------------------------------------------
+    def set_state(self, rooms: list) -> None:
+        """Zustand der Anlage: beim Titel, der im Ziel-Raum läuft, Pause statt Play zeigen."""
+        target = self.target()
+        room = next((r for r in rooms if r.udn == target), None)
+        now = (track_key(room.track_id), bool(room.playing)) if room is not None and room.is_queue else (None, False)
+        if now == self._now:
+            return
+        self._now = now
+        for b in self.findChildren(QPushButton):
+            if b.property("track_key") is not None:
+                self._style_track_button(b)
+
+    def _is_current(self, button: QPushButton) -> bool:
+        key = button.property("track_key")
+        return bool(key) and key == self._now[0]
+
+    def _style_track_button(self, button: QPushButton) -> None:
+        current, playing = self._is_current(button), self._now[1]
+        button.setText(ICON_PAUSE if current and playing else ICON_PLAY)
+        if current:
+            button.setToolTip(tr("Pause") if playing else tr("Weiterspielen"))
+        else:
+            button.setToolTip(tr("Ab diesem Titel abspielen"))
+
+    def _track_clicked(self, index: int, button: QPushButton) -> None:
+        if self._is_current(button):
+            self.toggle_requested.emit()  # laufenden Titel pausieren/fortsetzen statt neu starten
+            self._now = (self._now[0], not self._now[1])  # sofort umschalten; die Anlage bestätigt gleich
+            self._style_track_button(button)
+            return
+        self._play_view(index)
 
     # --- Abspielen ------------------------------------------------------
     def _play_view(self, start_index: int) -> None:

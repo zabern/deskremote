@@ -132,6 +132,7 @@ class App:
             w.closed.connect(self.register_hotkeys)
             w.restart_requested.connect(self.restart)
             w.remove_on_anlage.connect(self._remove_on_anlage)
+            w.reorder_on_anlage.connect(lambda targets: self.submit("reorder_favorites", (targets,)))
             return w
         self.hotkeys.unregister_all()  # sonst fangen die globalen Kürzel die Tasten beim Neubelegen ab
         self._show("settings", make)
@@ -180,6 +181,9 @@ class App:
             w.play.connect(self.play_container)
             w.play_shuffled.connect(self.play_container_shuffled)
             w.add_requested.connect(lambda object_id: self.submit("add_favorite", (object_id,)))
+            w.toggle_requested.connect(self._toggle_target)
+            self.worker.state_changed.connect(w.set_state)
+            w.set_state(self._rooms)
             w.favorites_changed.connect(self.popup.set_favorites)
             w.favorites_changed.connect(self._sync_settings)
             w.discover(self._find_media_servers)
@@ -221,6 +225,10 @@ class App:
         save_config(self.cfg)
         self.popup.set_favorites()
         self._sync_settings()
+
+    def _toggle_target(self) -> None:
+        if self.cfg.target_room:
+            self.submit("toggle_play", (self.cfg.target_room,))
 
     def _remove_on_anlage(self, targets: list) -> None:
         for target in targets:

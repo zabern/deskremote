@@ -191,6 +191,44 @@ def remove_favorite(server, favorite_id: str) -> None:
     server.device.call(CD, "DestroyObject", ObjectID=favorite_id)
 
 
+def readd_count(current: list[str], desired: list[str]) -> int:
+    """Wie viele Einträge von oben neu angelegt werden müssen, damit `desired` entsteht.
+
+    Neu Angelegtes landet oben; legt man desired[k-1] … desired[0] neu an, stehen sie oben in dieser
+    Reihenfolge, der Rest behält seine Reihenfolge. Gesucht ist das kleinste solche k."""
+    for k in range(len(desired) + 1):
+        head = set(desired[:k])
+        if [x for x in current if x not in head] == desired[k:]:
+            return k
+    return len(desired)
+
+
+def reorder_favorites(server, desired: list[str]) -> None:
+    """Teufel-Favoriten umsortieren (Ziel-Objekte in gewünschter Reihenfolge).
+
+    Die Anlage kann nicht verschieben (MoveInQueue: „container is not a queue“). An der Anlage
+    beobachtet: ein neu angelegter Favorit steht oben – also die obersten Einträge entfernen und sofort
+    neu anlegen. Was inzwischen in der Teufel-App dazukam und hier fehlt, bleibt oben stehen."""
+    favs = list_favorites(server)
+    current = [f.ref_id or "" for f in favs]
+    if len(set(current)) != len(current) or "" in current:
+        raise FavoriteError("Favoritenliste enthält doppelte oder unbekannte Einträge – nicht umsortiert")
+    wanted = [t for t in dict.fromkeys(desired) if t in set(current)]
+    full = [t for t in current if t not in set(wanted)] + wanted
+    k = readd_count(current, full)
+    for target in reversed(full[:k]):
+        entry = find_by_ref(list_favorites(server), target)
+        if entry is not None:
+            remove_favorite(server, entry.id)
+        try:
+            add_favorite(server, target)
+        except UpnpError:
+            add_favorite(server, target)  # einmal nachfassen – sonst fehlt der Favorit
+    now = list_favorites(server)
+    for target in [t for t in full if find_by_ref(now, t) is None]:  # nie einen Favoriten verlieren
+        add_favorite(server, target)
+
+
 def search_stations(server, text: str, count: int = 30) -> list[StationHit]:
     """TuneIn-Sender über die Anlage suchen; nur Sender, keine Sendungen/Podcasts."""
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
@@ -210,5 +248,5 @@ def _playable(title: str) -> bool:
 __all__ = [
     "FAVORITES", "TUNEIN_SEARCH", "AnlageFavorite", "FavoriteError", "StationHit",
     "add_favorite", "favorite_metadata", "find_by_ref", "list_favorites", "parse_favorites",
-    "play_uri", "playsingle_uri", "remove_favorite", "search_stations",
+    "play_uri", "playsingle_uri", "readd_count", "remove_favorite", "reorder_favorites", "search_stations",
 ]

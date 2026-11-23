@@ -35,8 +35,6 @@ KIND_LABELS = {"album": "Album", "track": "Titel", "artist": "Künstler · Zufal
 ANLAGE_LABELS = {"station": "Teufel-Favorit · Sender", "album": "Teufel-Favorit · Album",
                  "artist": "Teufel-Favorit · Künstler", "track": "Teufel-Favorit · Titel",
                  "playlist": "Teufel-Favorit · Wiedergabeliste", "other": "Teufel-Favorit"}
-NOT_ON_ANLAGE = "Geht bei Teufel-Favoriten nicht – die Anlage kann Favoriten nicht umsortieren oder umbenennen."
-NO_MANUAL = "Teufel-Favoriten brauchen einen Sender der Anlage – bitte über die Sendersuche (☆) anlegen."
 
 
 class SettingsWindow(QWidget):
@@ -44,6 +42,7 @@ class SettingsWindow(QWidget):
     closed = Signal()
     restart_requested = Signal()
     remove_on_anlage = Signal(list)  # Ziel-Objekte, die aus den Teufel-Favoriten entfernt werden sollen
+    reorder_on_anlage = Signal(list)  # gewünschte Reihenfolge der Teufel-Favoriten (Ziel-Objekte)
 
     def __init__(self, cfg: Config, save: Callable[[Config], None]):
         super().__init__(None, Qt.Window)
@@ -197,14 +196,13 @@ class SettingsWindow(QWidget):
             self.list.addItem(f"{f.name}    —    {label}")
         if select is not None and self._favs:
             self.list.setCurrentRow(max(0, min(select, len(self._favs) - 1)))
-        for name in ("up", "down", "rename", "manual"):
-            b = self.fav_buttons[name]
-            b.setEnabled(not self._anlage)
-            b.setToolTip(tr(NO_MANUAL if name == "manual" else NOT_ON_ANLAGE) if self._anlage else "")
+        for name in ("rename", "manual"):
+            self.fav_buttons[name].setVisible(not self._anlage)  # kann die Anlage nicht – nicht anbieten
         self.fav_buttons["delete"].setToolTip(
             tr("Entfernt den Favoriten auch in der Teufel-App") if self._anlage else "")
         self.fav_hint.setText(tr("Diese Liste ist dieselbe wie in der Teufel-App. Neue Favoriten über ☆ "
-                                 "in Sendersuche oder Musik.") if self._anlage else "")
+                                 "in Sendersuche oder Musik. Hoch/Runter sortiert auch die Teufel-App um.")
+                              if self._anlage else "")
         self._fill_pins()
 
     def _pin_changed(self, slot: int) -> None:
@@ -270,7 +268,8 @@ class SettingsWindow(QWidget):
         return box.clickedButton() is ok
 
     def _save(self) -> None:
-        removed = [f for f in self.cfg.active_favorites() if f.on_anlage and f.key in self._removed]
+        before = list(self.cfg.active_favorites())
+        removed = [f for f in before if f.on_anlage and f.key in self._removed]
         if removed and not self.confirm_removal([f.name for f in removed]):
             return
         self.cfg.title = self.title_edit.text().strip() or "DeskRemote"
@@ -286,6 +285,8 @@ class SettingsWindow(QWidget):
         self.save(self.cfg)
         if removed:
             self.remove_on_anlage.emit([f.target for f in removed])
+        if self._anlage and [f.key for f in self._favs] != [f.key for f in before if f.key not in self._removed]:
+            self.reorder_on_anlage.emit([f.key for f in self._favs])
         self.config_changed.emit()
         self.close()
         if self.cfg.language != old_language and self.ask_restart():

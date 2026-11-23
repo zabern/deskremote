@@ -16,7 +16,7 @@ from deskremote.raumfeld.models import Device, Room, Zone, ZoneConfig
 from deskremote.raumfeld.upnp import UpnpError
 from deskremote.ui.hotkeys import dispatch
 from deskremote.ui.search import SearchWindow
-from deskremote.ui.settings import ANLAGE_LABELS, NO_MANUAL, NOT_ON_ANLAGE, SettingsWindow
+from deskremote.ui.settings import ANLAGE_LABELS, SettingsWindow
 
 FIX = Path(__file__).parent / "fixtures"
 FAV_XML = (FIX / "favorites_my.xml").read_text(encoding="utf-8")
@@ -271,9 +271,10 @@ def test_settings_shows_teufel_list_and_locks_sort_rename(qtbot):
     qtbot.addWidget(w)
     lst = w.findChild(QListWidget, "favorites")
     assert lst.count() == 5 and "Teufel-Favorit · Sender" in lst.item(0).text()
-    for name in ("up", "down", "rename", "manual"):
-        assert not w.findChild(QPushButton, name).isEnabled()
-    assert w.findChild(QPushButton, "delete").isEnabled()
+    for name in ("rename", "manual"):
+        assert w.findChild(QPushButton, name).isHidden()  # kann die Anlage nicht → gar nicht angeboten
+    for name in ("up", "down", "delete"):
+        assert not w.findChild(QPushButton, name).isHidden()
 
 
 def test_settings_delete_asks_and_removes_on_anlage(qtbot, monkeypatch):
@@ -330,7 +331,7 @@ def test_settings_keeps_pending_delete_when_teufel_list_changes(qtbot):
 
 def test_new_texts_are_translated():
     from deskremote.i18n import EN
-    assert all(t in EN for t in list(ANLAGE_LABELS.values()) + [NOT_ON_ANLAGE, NO_MANUAL])
+    assert all(t in EN for t in ANLAGE_LABELS.values())
 
 
 # --- Musik-Sterne -----------------------------------------------------------
@@ -417,3 +418,159 @@ def test_removal_question_is_plain_text(qtbot, monkeypatch):
     qtbot.addWidget(w)
     assert w.confirm_removal(["<img src='file://x/a.png'>"]) is False
     assert seen == [Qt.PlainText]
+
+
+# --- Pause beim laufenden Titel in der Musik-Ansicht --------------------------
+def test_item_id_from_track_metadata():
+    from deskremote.raumfeld.didl import item_id_from_didl
+    didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="0/My Music/Artists/A/A+B/abc">'
+            '</item></DIDL-Lite>')
+    assert item_id_from_didl(didl) == "0/My Music/Artists/A/A+B/abc"
+    assert item_id_from_didl("") is None and item_id_from_didl("<kaputt") is None
+
+
+def test_track_key_ignores_path():
+    from deskremote.ui.music import track_key
+    assert track_key("0/My Music/Albums/A+B/abc") == track_key("0/My Music/Artists/A/A+B/abc") == "abc"
+    assert track_key(None) == ""
+
+
+def test_current_track_shows_pause_and_toggles(qtbot):
+    from test_music import FIRST_ALBUM, FakeMS
+    from deskremote.core.anlage import RoomState
+    from deskremote.raumfeld.media import MediaContainer
+    from deskremote.ui.music import MusicWindow
+    from deskremote.ui.theme import ICON_PAUSE, ICON_PLAY
+    cfg = default_config()
+    cfg.target_room = "uuid:bad"
+    w = MusicWindow([FakeMS()], None, cfg, save=lambda c: None, run_async=False)
+    qtbot.addWidget(w)
+    w.open_container(MediaContainer(FIRST_ALBUM, "Album 01", "Naked Lunch", 9, None, "album"))
+    btn = lambda i: w.findChild(QPushButton, f"playtrack:{i}")  # noqa: E731
+    second = btn(1).property("track_key")
+    playing = RoomState("uuid:bad", "Bad", "uuid:z", "ACTIVE", True, None, 30, False, is_queue=True,
+                        track_id="0/My Music/Artists/X/X+Y/" + second)
+    w.set_state([playing])
+    assert btn(1).text() == ICON_PAUSE and btn(0).text() == ICON_PLAY
+    with qtbot.waitSignal(w.toggle_requested):
+        qtbot.mouseClick(btn(1), Qt.LeftButton)
+    assert btn(1).text() == ICON_PLAY  # sofort umgeschaltet, die Anlage bestätigt
+    w.set_state([RoomState("uuid:bad", "Bad", "uuid:z", "ACTIVE", False, None, 30, False, is_queue=True,
+                           track_id=playing.track_id)])
+    assert btn(1).text() == ICON_PLAY
+    other_room = RoomState("uuid:kueche", "Küche", "uuid:k", "ACTIVE", True, None, 30, False, is_queue=True,
+                           track_id=playing.track_id)
+    w.set_state([other_room])  # läuft nur woanders → hier kein Pause
+    assert btn(1).text() == ICON_PLAY
+
+
+# --- Umsortieren (entfernen + neu anlegen → steht oben) ------------------------
+class TopInsertServer:
+    """Simuliert die Anlage: CreateReference legt oben an, DestroyObject entfernt."""
+    udn = MS_UDN
+
+    def __init__(self, refs, fail_creates=0):
+        self.entries = [(f"0/Favorites/MyFavorites/{i}", r) for i, r in enumerate(refs)]
+        self.next_id = 100
+        self.fail_creates = fail_creates
+        self.creates = 0
+        self.device = self
+
+    def refs(self):
+        return [r for _, r in self.entries]
+
+    def metadata(self, object_id):
+        return ""
+
+    def call(self, service, action, **args):
+        if action == "Browse":
+            items = "".join(
+                f'<item id="{i}" refID="{r}"><dc:title>{r}</dc:title>'
+                f'<upnp:class>object.item.audioItem.audioBroadcast.radio</upnp:class></item>'
+                for i, r in self.entries)
+            didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+                    'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+                    'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">' + items + "</DIDL-Lite>")
+            return {"Result": didl, "NumberReturned": str(len(self.entries))}
+        if action == "CreateReference":
+            self.creates += 1
+            if self.fail_creates:
+                self.fail_creates -= 1
+                raise UpnpError("kurz weg")
+            self.next_id += 1
+            new = f"0/Favorites/MyFavorites/{self.next_id}"
+            self.entries.insert(0, (new, args["ObjectID"]))
+            return {"NewID": new}
+        if action == "DestroyObject":
+            self.entries = [e for e in self.entries if e[0] != args["ObjectID"]]
+            return {}
+        raise AssertionError(action)
+
+
+R = [f"0/RadioTime/Search/s-{c}" for c in "abcdef"]
+
+
+def test_readd_count_is_minimal():
+    from deskremote.raumfeld.favorites import readd_count
+    assert readd_count(R, R) == 0
+    assert readd_count(R, [R[1], R[0]] + R[2:]) == 1  # Platz 2 nach oben: einer
+    assert readd_count(R, [R[5]] + R[:5]) == 1  # ganz unten nach ganz oben: einer
+    assert readd_count(R, R[1:] + [R[0]]) == 5  # ganz oben nach ganz unten: alle anderen
+
+
+@pytest.mark.parametrize("desired", [
+    [R[1], R[0]] + R[2:], [R[5]] + R[:5], R[1:] + [R[0]], list(reversed(R)), [R[0], R[2], R[1]] + R[3:],
+])
+def test_reorder_reaches_any_order(desired):
+    from deskremote.raumfeld.favorites import reorder_favorites
+    server = TopInsertServer(R)
+    reorder_favorites(server, desired)
+    assert server.refs() == desired
+
+
+def test_reorder_keeps_entries_added_meanwhile_on_top():
+    from deskremote.raumfeld.favorites import reorder_favorites
+    server = TopInsertServer(["0/RadioTime/Search/neu"] + R)  # kam in der Teufel-App dazu
+    reorder_favorites(server, [R[1], R[0]] + R[2:])
+    assert server.refs() == ["0/RadioTime/Search/neu", R[1], R[0]] + R[2:]
+
+
+def test_reorder_retries_and_never_loses_a_favorite():
+    from deskremote.raumfeld.favorites import reorder_favorites
+    server = TopInsertServer(R, fail_creates=1)
+    reorder_favorites(server, [R[2]] + R[:2] + R[3:])
+    assert sorted(server.refs()) == sorted(R) and server.refs()[0] == R[2]
+
+
+def test_reorder_refuses_duplicates():
+    from deskremote.raumfeld.favorites import FavoriteError, reorder_favorites
+    server = TopInsertServer([R[0], R[0], R[1]])
+    with pytest.raises(FavoriteError):
+        reorder_favorites(server, [R[1], R[0]])
+    assert server.creates == 0
+
+
+def test_settings_up_emits_reorder(qtbot):
+    cfg = anlage_cfg()
+    w = SettingsWindow(cfg, save=lambda c: None)
+    qtbot.addWidget(w)
+    got = []
+    w.reorder_on_anlage.connect(got.append)
+    w.findChild(QListWidget, "favorites").setCurrentRow(2)
+    qtbot.mouseClick(w.findChild(QPushButton, "up"), Qt.LeftButton)
+    qtbot.mouseClick(w.findChild(QPushButton, "save"), Qt.LeftButton)
+    assert got == [[FM4.key, PARADISE.key, OE1.key, ALBUM.key, ARTIST.key]]
+    assert [f.key for f in cfg.anlage_favorites] == got[0]  # sofort so angezeigt
+
+
+def test_settings_without_move_sends_no_reorder(qtbot, monkeypatch):
+    cfg = anlage_cfg()
+    w = SettingsWindow(cfg, save=lambda c: None)
+    qtbot.addWidget(w)
+    got = []
+    w.reorder_on_anlage.connect(got.append)
+    monkeypatch.setattr(w, "confirm_removal", lambda names: True)
+    w.findChild(QListWidget, "favorites").setCurrentRow(1)
+    qtbot.mouseClick(w.findChild(QPushButton, "delete"), Qt.LeftButton)  # nur löschen
+    qtbot.mouseClick(w.findChild(QPushButton, "save"), Qt.LeftButton)
+    assert got == []

@@ -39,7 +39,7 @@ Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode g
 ## Musik vom NAS
 
 - Voraussetzung: den Musikordner des NAS **einmal in der Teufel-App** als Musikquelle hinzufügen. Raumfeld liest ihn dann selbst ein.
-- Im Ausklappfenster **„Musik“**: Künstler (Start), Alben, Ordner, Suche. ▶ beim Album spielt das ganze Album, ▶ beim Titel ab diesem Titel, ▶ beim Künstler alle seine Titel im Zufallsmodus – jeweils im Ziel-Raum bzw. der Ziel-Gruppe.
+- Im Ausklappfenster **„Musik“**: Künstler (Start), Alben, Ordner, Suche. ▶ beim Album spielt das ganze Album, ▶ beim Titel ab diesem Titel, ▶ beim Künstler alle seine Titel im Zufallsmodus – jeweils im Ziel-Raum bzw. der Ziel-Gruppe. Beim Titel, der gerade im Ziel-Raum läuft, steht Pause statt ▶.
 - **☆** legt Album, Titel oder Künstler in den Teufel-Favoriten an (auch in der Teufel-App sichtbar).
 - Weitere DLNA-Server im Heimnetz erscheinen ebenfalls als Quelle (ob Raumfeld deren Alben abspielt, hängt vom Server ab).
 
@@ -52,7 +52,8 @@ Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode g
 
 - Die Liste liegt auf der Anlage, nicht in DeskRemote. Neue Favoriten landen oben, wie in der Teufel-App.
 - **Löschen** in den Einstellungen entfernt den Favoriten nach einer Rückfrage auch in der Teufel-App.
-- **Umsortieren und Umbenennen** kann die Anlage nicht; die Knöpfe sind dafür gesperrt.
+- **Hoch/Runter** sortiert die Liste auch in der Teufel-App um. Die Anlage kann selbst nicht verschieben; DeskRemote legt dafür die betroffenen Einträge kurz neu an (neu Angelegtes steht oben). Sender, Alben und Stationstasten bleiben unberührt.
+- **Umbenennen** kann die Anlage nicht; der Name kommt vom Sender bzw. Album.
 - **Strg+Alt+1–3:** In den Einstellungen festlegen, welcher Favorit auf welchem Kürzel liegt. Ohne Festlegung gilt Platz 1–3 der Liste. Beim Umstieg übernimmt DeskRemote die bisherige Belegung, wo der Sender eindeutig wiederzufinden ist, und meldet die übrigen.
 - Die frühere eigene Liste bleibt in der Config erhalten und gilt nur, bis die Anlage einmal erreichbar war.
 

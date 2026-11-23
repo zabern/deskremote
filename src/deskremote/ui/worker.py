@@ -33,7 +33,7 @@ ALLOWED_ACTIONS = {
 }
 # Teufel-Favoriten: liefern die neue Liste zurück (Signal favorites_loaded)
 FAVORITE_ACTIONS = {"load_favorites": "favorites", "add_favorite": "add_favorite",
-                    "remove_favorite": "remove_favorite"}
+                    "remove_favorite": "remove_favorite", "reorder_favorites": "reorder_favorites"}
 FAVORITES_INTERVAL = 60.0  # so oft nachsehen, ob jemand in der Teufel-App etwas geändert hat
 
 
@@ -206,7 +206,7 @@ class Worker(QObject):
         action, _args = self._next(self.retry_interval)
         if action == "__stop__":
             return False
-        if action in ALLOWED_ACTIONS or action in ("add_favorite", "remove_favorite"):
+        if action in ALLOWED_ACTIONS or action in ("add_favorite", "remove_favorite", "reorder_favorites"):
             self.error.emit(tr(OFFLINE_TEXT))  # nie still verlieren – sonst taucht ein „Gelöschtes“ wieder auf
         return True
 
