@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deskremote"
-version = "2.4.1"
+version = "2.5.0"
 description = "Inoffizielle Windows-Tray-Fernbedienung für Teufel Raumfeld"
 license = { text = "MIT" }
 readme = "README.md"
