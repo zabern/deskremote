@@ -48,6 +48,18 @@ def track_from_didl(didl: str) -> tuple[str | None, str | None, str | None]:
             cleaned(first(f"{_UPNP}albumArtURI"), None))
 
 
+def item_id_from_didl(didl: str) -> str | None:
+    """Objekt-ID des laufenden Titels (bei Raumfeld die ID in der Bibliothek)."""
+    if not didl:
+        return None
+    try:
+        root = parse(didl)
+    except XmlError:
+        return None
+    el = next((e for e in root if e.tag.rsplit("}", 1)[-1] == "item"), None)
+    return (el.get("id") or None) if el is not None else None
+
+
 def title_from_didl(didl: str) -> str | None:
     if not didl:
         return None

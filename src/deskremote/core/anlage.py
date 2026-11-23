@@ -10,13 +10,15 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from ..i18n import tr
-from ..raumfeld.didl import didl_for_stream, title_from_didl, track_from_didl
+from ..raumfeld import favorites as rf
+from ..raumfeld.didl import didl_for_stream, item_id_from_didl, title_from_didl, track_from_didl
 from ..raumfeld.host import RaumfeldHost
-from ..raumfeld.media import with_start_index
-from ..raumfeld.models import MEDIA_RENDERER, Device, Room, ZoneConfig
+from ..raumfeld.media import MediaServer, with_start_index
+from ..raumfeld.models import MEDIA_RENDERER, MEDIA_SERVER, Device, Room, ZoneConfig
 from ..raumfeld.upnp import AVT, RC, UpnpDevice, UpnpError
-from .config import Favorite
+from .config import ANLAGE, Favorite
 from .radio import is_hls
+from .text import clean_text
 
 POLL_INTERVAL = 0.5
 ZONE_WAIT_STEPS = 10  # 5 s
@@ -63,6 +65,7 @@ class RoomState:
     shuffle: bool = False
     repeat: str = "off"  # "off" | "all" | "one"
     can_toggle: bool = False  # Raum ohne Zone, der selbst Spotify spielt: Play/Pause direkt am Lautsprecher
+    track_id: str | None = None  # Musik-Wiedergabeliste: Bibliotheks-ID des laufenden Titels
 
 
 # Lautsprecher ohne Zone: nur aus diesen Zuständen heraus Play/Pause senden
@@ -84,6 +87,22 @@ def _int(value: str | None) -> int | None:
         return None
 
 
+def anlage_favorite(server_udn: str, af: rf.AnlageFavorite) -> Favorite | None:
+    """Eintrag der Teufel-Favoriten als DeskRemote-Favorit (ohne Ziel-Objekt nicht verwendbar)."""
+    if not af.ref_id:
+        return None
+    station = af.kind == "station"
+    name = clean_text(af.title, 200) or af.ref_id
+    return Favorite(name, rf.play_uri(server_udn, af), (af.art_url or "") if station else "", ANLAGE, "",
+                    None if station else af.art_url, 0, af.id, af.ref_id, af.kind)
+
+
+def station_favorite(server_udn: str, hit: rf.StationHit) -> Favorite:
+    """Suchtreffer zum direkten Abspielen (kein Eintrag in den Teufel-Favoriten)."""
+    return Favorite(clean_text(hit.title, 200), rf.playsingle_uri(server_udn, hit.id), hit.art_url or "",
+                    ANLAGE, "", None, 0, "", hit.id, "station")
+
+
 class Anlage:
     def __init__(self, host: RaumfeldHost, device_factory: Callable[[str], UpnpDevice],
                  sleep: Callable[[float], None] = time.sleep,
@@ -94,6 +113,7 @@ class Anlage:
         self.rng = rng
         self._devices: dict[str, Device] = {}
         self._upnp: dict[str, tuple[str, UpnpDevice]] = {}
+        self._server: tuple[str, MediaServer] | None = None
 
     def _location_ok(self, location: str) -> bool:
         parts = urlsplit(location)
@@ -209,10 +229,11 @@ class Anlage:
 
     def _queue_state(self, dev: UpnpDevice) -> dict:
         """Zusatzfelder, wenn ein Album/Ordner läuft (Raumfeld-Wiedergabeliste)."""
-        track, artist, art = track_from_didl(dev.call(AVT, "GetPositionInfo", InstanceID=0).get("TrackMetaData", ""))
+        meta = dev.call(AVT, "GetPositionInfo", InstanceID=0).get("TrackMetaData", "")
+        track, artist, art = track_from_didl(meta)
         shuffle, repeat = parse_play_mode(dev.call(AVT, "GetTransportSettings", InstanceID=0).get("PlayMode"))
         return {"track": track, "artist": artist, "art_url": art, "is_queue": True,
-                "shuffle": shuffle, "repeat": repeat}
+                "shuffle": shuffle, "repeat": repeat, "track_id": item_id_from_didl(meta)}
 
     # --- Aktionen -------------------------------------------------------
     def _ensure_zone(self, zc: ZoneConfig, room: Room):
@@ -298,8 +319,72 @@ class Anlage:
             except UpnpError as exc:
                 raise PlayError(tr("Musik läuft, aber der Zufallsmodus ließ sich nicht einschalten")) from exc
 
+    # --- Teufel-Favoriten ------------------------------------------------
+    def media_server(self) -> MediaServer:
+        """Der Medienserver der Anlage (dort liegen Bibliothek, TuneIn und die Teufel-Favoriten)."""
+        devices = self._devices if any(d.type == MEDIA_SERVER for d in self._devices.values())             else self.host.list_devices()
+        dev = next((d for d in devices.values() if d.type == MEDIA_SERVER and self._location_ok(d.location)), None)
+        if dev is None:
+            raise UpnpError(tr("Raumfeld-Medienserver nicht gefunden"))
+        if self._server is None or self._server[0] != dev.location:
+            self._server = (dev.location, MediaServer(dev.udn, dev.name, self.device_factory(dev.location),
+                                                      raumfeld=True))
+        return self._server[1]
+
+    def favorites(self) -> list[Favorite]:
+        server = self.media_server()
+        return [f for af in rf.list_favorites(server) if (f := anlage_favorite(server.udn, af)) is not None]
+
+    def add_favorite(self, object_id: str) -> list[Favorite]:
+        """Objekt der Anlage (Sender, Album …) zu den Teufel-Favoriten; liefert die neue Liste."""
+        rf.add_favorite(self.media_server(), object_id)
+        return self.favorites()
+
+    def remove_favorite(self, target: str) -> list[Favorite]:
+        """Teufel-Favorit über sein Ziel-Objekt entfernen – der Eintrag wird frisch nachgeschlagen."""
+        server = self.media_server()
+        entry = rf.find_by_ref(rf.list_favorites(server), target)
+        if entry is not None:
+            rf.remove_favorite(server, entry.id)
+        return self.favorites()
+
+    def reorder_favorites(self, targets: list[str]) -> list[Favorite]:
+        """Teufel-Favoriten in diese Reihenfolge bringen (wirkt auch in der Teufel-App)."""
+        rf.reorder_favorites(self.media_server(), list(targets))
+        return self.favorites()
+
+    def search_stations(self, text: str) -> list[rf.StationHit]:
+        return rf.search_stations(self.media_server(), text)
+
+    def _play_anlage(self, room_udn: str, fav: Favorite) -> None:
+        server = self.media_server()
+        if fav.ref:  # Teufel-Favorit: aktuellen Eintrag nachschlagen (IDs wechseln beim Neuanlegen)
+            entry = rf.find_by_ref(rf.list_favorites(server), fav.target)
+            if entry is None:
+                raise PlayError(tr("{name} steht nicht mehr in den Teufel-Favoriten", name=fav.name))
+            uri, meta, shuffle = rf.play_uri(server.udn, entry), rf.favorite_metadata(server, entry), entry.kind == "artist"
+        else:  # Suchtreffer: das Objekt selbst
+            uri, meta, shuffle = rf.playsingle_uri(server.udn, fav.target), server.metadata(fav.target), False
+        zone = self._prepare_zone(room_udn)
+        try:
+            renderer = self._renderer(zone.udn)
+            started = self._play_confirmed(renderer, uri, meta)
+        except UpnpError as exc:
+            raise PlayError(tr("{name} konnte nicht starten ({error})", name=fav.name, error=exc)) from exc
+        if not started:
+            raise PlayError(tr("{name} konnte nicht starten", name=fav.name))
+        if shuffle:
+            try:
+                renderer.call(AVT, "SetPlayMode", InstanceID=0, NewPlayMode=play_mode_for(True, "off"))
+            except UpnpError as exc:
+                raise PlayError(tr("Musik läuft, aber der Zufallsmodus ließ sich nicht einschalten")) from exc
+
     def play_favorite(self, room_udn: str, fav: Favorite) -> None:
-        """Ein Favorit, egal welcher Art: Sender als Stream, Musik über Raumfelds Wiedergabeliste."""
+        """Ein Favorit, egal welcher Art: Teufel-Favorit wie die Teufel-App, Sender als Stream,
+        Musik über Raumfelds Wiedergabeliste."""
+        if fav.on_anlage:
+            self._play_anlage(room_udn, fav)
+            return
         if not fav.is_music:
             self.play_stream(room_udn, fav)
             return

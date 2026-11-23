@@ -11,8 +11,8 @@
 ## Was es kann
 
 - **Räume & Gruppen:** alle Räume mit Lautstärke, Play/Pause und Standby; Räume koppeln und entkoppeln.
-- **Favoriten:** Internetradio-Sender sowie Alben, Titel und Künstler (Zufallswiedergabe) aus der Raumfeld-Bibliothek – ein Klick oder Strg+Alt+1–3.
-- **Sendersuche** über [radio-browser.info](https://www.radio-browser.info), mit Senderlogos.
+- **Favoriten = Teufel-Favoriten:** DeskRemote zeigt und spielt dieselbe Favoritenliste wie die Teufel-App. Was man in DeskRemote mit ☆ anlegt, steht auch in der App, und umgekehrt. Ein Klick oder Strg+Alt+1–3.
+- **Sendersuche** über TuneIn, direkt über die Anlage (wie in der Teufel-App), mit Senderlogos.
 - **Musik vom NAS:** Alben, Künstler, Ordner und Suche in der Raumfeld-Bibliothek, mit Covern; Zufall und Wiederholen.
 - **Spotify-Anzeige:** spielt Spotify Connect, zeigt DeskRemote das Spotify-Icon und (im Mehrraum-Modus) Titel und Interpret.
 - **Globale Tastenkürzel** und ein Rechtsklick-Menü am Taskleistensymbol.
@@ -39,8 +39,8 @@ Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode g
 ## Musik vom NAS
 
 - Voraussetzung: den Musikordner des NAS **einmal in der Teufel-App** als Musikquelle hinzufügen. Raumfeld liest ihn dann selbst ein.
-- Im Ausklappfenster **„Musik“**: Künstler (Start), Alben, Ordner, Suche. ▶ beim Album spielt das ganze Album, ▶ beim Titel ab diesem Titel, ▶ beim Künstler alle seine Titel im Zufallsmodus – jeweils im Ziel-Raum bzw. der Ziel-Gruppe.
-- **☆** speichert Album, Titel oder Künstler als Favorit; umsortieren, umbenennen und löschen in den Einstellungen.
+- Im Ausklappfenster **„Musik“**: Künstler (Start), Alben, Ordner, Suche. ▶ beim Album spielt das ganze Album, ▶ beim Titel ab diesem Titel, ▶ beim Künstler alle seine Titel im Zufallsmodus – jeweils im Ziel-Raum bzw. der Ziel-Gruppe. Beim Titel, der gerade im Ziel-Raum läuft, steht Pause statt ▶.
+- **☆** legt Album, Titel oder Künstler in den Teufel-Favoriten an (auch in der Teufel-App sichtbar).
 - Weitere DLNA-Server im Heimnetz erscheinen ebenfalls als Quelle (ob Raumfeld deren Alben abspielt, hängt vom Server ab).
 
 ## Spotify
@@ -48,9 +48,18 @@ Wer lieber selbst baut: siehe „Bauen und Testen“; direkt aus dem Quellcode g
 - Gesteuert wird Spotify über die Spotify-App; DeskRemote zeigt nur an, wo Spotify gerade spielt.
 - Im **Mehrraum-Modus** (Teufel-App → Spotify) gibt es genau ein Spotify-Gerät, die „Spotify-Zone“. Koppelt man in DeskRemote Räume, die zur Spotify-Zone gehören, wandert Spotify mit. Im **Einzelraum-Modus** ist jeder Raum ein eigenes Spotify-Gerät.
 
+## Teufel-Favoriten
+
+- Die Liste liegt auf der Anlage, nicht in DeskRemote. Neue Favoriten landen oben, wie in der Teufel-App.
+- **Löschen** in den Einstellungen entfernt den Favoriten nach einer Rückfrage auch in der Teufel-App.
+- **Hoch/Runter** sortiert die Liste auch in der Teufel-App um. Die Anlage kann selbst nicht verschieben; DeskRemote legt dafür die betroffenen Einträge kurz neu an (neu Angelegtes steht oben). Sender, Alben und Stationstasten bleiben unberührt.
+- **Umbenennen** kann die Anlage nicht; der Name kommt vom Sender bzw. Album.
+- **Strg+Alt+1–3:** In den Einstellungen festlegen, welcher Favorit auf welchem Kürzel liegt. Ohne Festlegung gilt Platz 1–3 der Liste. Beim Umstieg übernimmt DeskRemote die bisherige Belegung, wo der Sender eindeutig wiederzufinden ist, und meldet die übrigen.
+- Die frühere eigene Liste bleibt in der Config erhalten und gilt nur, bis die Anlage einmal erreichbar war.
+
 ## Bekannte Grenzen
 
-- **HLS-Sender** (Adressen mit `.m3u8`, z. B. alle BBC-Sender) kann Raumfeld nicht abspielen. Die Sendersuche kennzeichnet sie, DeskRemote schickt sie nie an die Anlage.
+- **HLS-Adressen** (`.m3u8`) kann Raumfeld nicht direkt abspielen; DeskRemote schickt solche Adressen aus alten eigenen Favoriten nie an die Anlage. Über die TuneIn-Suche wählt die Anlage selbst einen passenden Stream – so spielen auch BBC-Sender.
 - Senderlogos im SVG-Format werden aus Sicherheitsgründen nicht angezeigt (siehe Sicherheit).
 
 ## Tastenkürzel (Standard, in den Einstellungen änderbar)
@@ -69,12 +78,13 @@ DeskRemote hat kein Konto, keine Werbung und sendet keine Nutzungsdaten. Netzwer
 | Ziel | Wann | Was wird gesendet |
 |---|---|---|
 | Raumfeld-Anlage im Heimnetz | immer | Steuerbefehle (UPnP, Host-API Port 47365) |
-| radio-browser.info | Sendersuche, Senderlogos | Suchbegriff bzw. Stream-Adresse |
+| Raumfeld-Anlage → TuneIn | Sendersuche | Suchbegriff (die Anlage fragt TuneIn) |
+| radio-browser.info | Logos alter eigener Favoriten | Stream-Adresse |
 | Logo-Adressen der Sender | Favoriten mit Logo | normaler Bildabruf |
 | MusicBrainz / Cover Art Archive | fehlende Cover, **abschaltbar** | nur Interpret und Albumname |
 | last.fm (über die Raumfeld-Anlage) | Künstlerbilder | Bildabruf nach Weiterleitung der Anlage |
 
-Gespeichert wird lokal: `%APPDATA%\DeskRemote\config.json` (Favoriten, Tastenkürzel, Ziel-Raum, Host-Adresse), `%APPDATA%\DeskRemote\deskremote.log` (Befehle an die Anlage, max. ~1,5 MB) und ein Cover-Zwischenspeicher unter `%LOCALAPPDATA%\DeskRemote\covers`.
+Gespeichert wird lokal: `%APPDATA%\DeskRemote\config.json` (Zwischenspeicher der Teufel-Favoriten, Kürzel-Belegung, Tastenkürzel, Ziel-Raum, Host-Adresse), `%APPDATA%\DeskRemote\deskremote.log` (Befehle an die Anlage, max. ~1,5 MB) und ein Cover-Zwischenspeicher unter `%LOCALAPPDATA%\DeskRemote\covers`.
 
 ## Sicherheit
 

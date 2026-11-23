@@ -31,6 +31,10 @@ ALLOWED_ACTIONS = {
     "standby_group", "change_group_volume",
     "play_container", "next_track", "previous_track", "set_play_mode",
 }
+# Teufel-Favoriten: liefern die neue Liste zurück (Signal favorites_loaded)
+FAVORITE_ACTIONS = {"load_favorites": "favorites", "add_favorite": "add_favorite",
+                    "remove_favorite": "remove_favorite", "reorder_favorites": "reorder_favorites"}
+FAVORITES_INTERVAL = 60.0  # so oft nachsehen, ob jemand in der Teufel-App etwas geändert hat
 
 
 def _log_args(act: str, args: tuple) -> str:
@@ -62,6 +66,7 @@ class Worker(QObject):
     state_changed = Signal(list)
     online_changed = Signal(bool)
     error = Signal(str)
+    favorites_loaded = Signal(list)  # Teufel-Favoriten, frisch von der Anlage
     _save_requested = Signal()  # wird im UI-Thread ausgeführt (Worker-Objekt lebt dort)
 
     def __init__(self, cfg: Config, make_anlage: Callable[[str], Any],
@@ -79,6 +84,7 @@ class Worker(QObject):
         self._anlage = None
         self._online: bool | None = None
         self._threads: list[threading.Thread] = []
+        self._favorites_at = float("-inf")
         self._save_requested.connect(lambda: self.save(self.cfg))
 
     # --- öffentlich -----------------------------------------------------
@@ -91,6 +97,11 @@ class Worker(QObject):
         deadline = time.monotonic() + 2.0
         for t in self._threads:
             t.join(timeout=max(0.0, deadline - time.monotonic()))
+
+    @property
+    def anlage(self):
+        """Die verbundene Anlage oder None (nur lesend nutzen, z. B. für die Sendersuche)."""
+        return self._anlage
 
     def submit(self, action: str, *args: Any) -> None:
         self._queue.put((action, args))
@@ -120,7 +131,23 @@ class Worker(QObject):
             self._save_requested.emit()
         self._spawn(self._long_poll, "raumfeld-poll", anlage)
         self._set_online(True)
+        self._favorites_at = float("-inf")  # gleich nach dem Verbinden die Teufel-Favoriten holen
         return True
+
+    def _favorites(self, action: str, args: tuple) -> None:
+        """Teufel-Favoriten lesen/ändern. Lesen im Hintergrund bleibt stumm, Ändern meldet Fehler."""
+        self._favorites_at = time.monotonic()
+        loud = action != "load_favorites"
+        if loud:
+            get_logger().info("Aktion %s %s", action, short(args))
+        try:
+            favs = getattr(self._anlage, FAVORITE_ACTIONS[action])(*args)
+        except (UpnpError, httpx.HTTPStatusError, XmlError) as exc:
+            get_logger().warning("Teufel-Favoriten (%s) fehlgeschlagen: %s", action, short(exc))
+            if loud:
+                self.error.emit(_describe(exc))
+            return
+        self.favorites_loaded.emit(list(favs))
 
     def _drop(self) -> None:
         self._anlage = None
@@ -179,8 +206,8 @@ class Worker(QObject):
         action, _args = self._next(self.retry_interval)
         if action == "__stop__":
             return False
-        if action in ALLOWED_ACTIONS:
-            self.error.emit(tr(OFFLINE_TEXT))
+        if action in ALLOWED_ACTIONS or action in ("add_favorite", "remove_favorite", "reorder_favorites"):
+            self.error.emit(tr(OFFLINE_TEXT))  # nie still verlieren – sonst taucht ein „Gelöschtes“ wieder auf
         return True
 
     def _run(self) -> None:
@@ -197,6 +224,18 @@ class Worker(QObject):
                 if args and args[0] is self._anlage:
                     self._drop()
                 continue
+            if action in FAVORITE_ACTIONS or (
+                    action == "__refresh__" and time.monotonic() - self._favorites_at >= FAVORITES_INTERVAL):
+                try:
+                    self._favorites(action if action in FAVORITE_ACTIONS else "load_favorites", args
+                                    if action in FAVORITE_ACTIONS else ())
+                except httpx.TransportError:  # Verbindung weg: neu verbinden
+                    self._drop()
+                    continue
+                except Exception as exc:  # noqa: BLE001 – nie den Worker an den Favoriten sterben lassen
+                    get_logger().warning("Teufel-Favoriten: %s", short(exc))
+                if action in FAVORITE_ACTIONS:
+                    continue
             batch = [(action, args)]
             if action == "set_volume":
                 batch = self._coalesce_volume((action, args))

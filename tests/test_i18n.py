@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QPushButton
 from deskremote import i18n
 from deskremote.core.config import Config, default_config, load_config
 from deskremote.i18n import EN, set_language, tr
-from deskremote.ui.search import COUNTRIES
 from deskremote.ui.settings import HOTKEY_LABELS, KIND_LABELS, SettingsWindow
 from deskremote.ui.worker import OFFLINE_TEXT
 
@@ -37,7 +36,7 @@ def _tr_literals() -> set[str]:
 
 def test_every_text_has_an_english_version():
     keys = _tr_literals() | set(HOTKEY_LABELS.values()) | set(KIND_LABELS.values())
-    keys |= {label for label, _ in COUNTRIES} | {OFFLINE_TEXT}
+    keys |= {OFFLINE_TEXT}
     assert len(keys) > 100  # der Scan findet wirklich etwas
     assert sorted(k for k in keys if k not in EN) == []
 

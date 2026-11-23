@@ -20,7 +20,7 @@ from ..raumfeld.media import (
     ALBUMS, ARTISTS, FOLDERS, PAGE_SIZE, SEARCH_ALBUMS, SEARCH_ARTISTS, MediaContainer, Page, container_uri,
     normalize_raumfeld_album,
 )
-from .theme import ICON_PLAY, STYLESHEET, PlainLabel, app_icon
+from .theme import ICON_PAUSE, ICON_PLAY, STYLESHEET, PlainLabel, app_icon
 
 DEBOUNCE_MS = 400
 ROOT = "0"  # Wurzel fremder DLNA-Server
@@ -38,6 +38,14 @@ class View:
     fetched: int = 0  # roh vom Server erhaltene Einträge (Grundlage fürs Nachladen)
 
 
+def track_key(object_id: str | None) -> str:
+    """Kennung eines Titels unabhängig vom Pfad: Raumfeld führt ihn unter …/Albums/… und
+    …/Artists/…, das letzte Stück (eine Prüfsumme) ist gleich."""
+    if not object_id or not object_id.startswith("0/My Music/"):
+        return object_id or ""
+    return object_id.rsplit("/", 1)[-1]
+
+
 class MusicWindow(QWidget):
     play = Signal(str, str)  # Transport-URI, Metadaten
     play_shuffled = Signal(str, str)  # dito, im Zufallsmodus (Künstler: alle Titel)
@@ -45,6 +53,8 @@ class MusicWindow(QWidget):
     _meta_ready = Signal(str, str, bool)
     _servers_ready = Signal(object)
     favorites_changed = Signal()
+    toggle_requested = Signal()  # Play/Pause im Ziel-Raum (beim gerade laufenden Titel)
+    add_requested = Signal(str)  # Objekt-ID → in die Teufel-Favoriten (sobald die Anlage-Liste da ist)
     _fav_ready = Signal(object, str)  # Favorite oder None, objectName des Sterns
 
     def __init__(self, servers: list, covers, cfg: Config, save: Callable[[Config], None],
@@ -60,6 +70,7 @@ class MusicWindow(QWidget):
         self._generation = 0
         self._loading = False
         self._cover_labels: dict[str, PlainLabel] = {}
+        self._now: tuple[str | None, bool] = (None, False)  # (Titel-Kennung, spielt?) im Ziel-Raum
         self.setWindowTitle(tr("Musik"))
         self.setWindowIcon(app_icon())
         self.setStyleSheet(STYLESHEET)
@@ -381,14 +392,16 @@ class MusicWindow(QWidget):
             play.setObjectName(f"playtrack:{index}")
             play.setProperty("round", True)
             play.setProperty("icon_btn", True)
-            play.setToolTip(tr("Ab diesem Titel abspielen"))
-            play.clicked.connect(lambda _=False, i=index: self._play_view(i))
+            play.setProperty("track_key", track_key(item.id))
+            play.clicked.connect(lambda _=False, i=index, b=play: self._track_clicked(i, b))
+            self._style_track_button(play)
             lay.addWidget(play)
             view = self._stack[-1] if self._stack else None
             if view is not None and view.container is not None and self._raumfeld_source():
                 c = view.container
                 name = f"{item.title} · {item.artist}" if item.artist else item.title
-                lay.addWidget(self._star(f"startrack:{index}", "track", c.id, index, name, c.art_url))
+                lay.addWidget(self._star(f"startrack:{index}", "track", c.id, index, name, c.art_url,
+                                         object_id=item.id))
         return w
 
     # --- Favoriten ------------------------------------------------------
@@ -397,12 +410,44 @@ class MusicWindow(QWidget):
 
     def _container_star(self, index: int, c: MediaContainer) -> QPushButton:
         if c.kind == "artist":
-            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, tr("{name} · Zufall", name=c.title), c.art_url)
+            return self._star(f"star:{index}", "artist", f"{c.id}/AllTracks", 0, tr("{name} · Zufall", name=c.title),
+                              c.art_url, object_id=c.id)
         name = f"{c.title} · {c.artist}" if c.artist else c.title
-        return self._star(f"star:{index}", "album", c.id, 0, name, c.art_url)
+        return self._star(f"star:{index}", "album", c.id, 0, name, c.art_url, object_id=c.id)
+
+    # Teufel-Favoriten ---------------------------------------------------
+    def _anlage_mode(self) -> bool:
+        return self.cfg.anlage_favorites is not None
+
+    def _on_anlage(self, object_id: str) -> bool:
+        """Steht das Objekt schon in den Teufel-Favoriten? Alben auch unter ihrem zweiten Pfad erkennen
+        (…/Albums/A+X und …/Artists/A/A+X enden gleich)."""
+        targets = {f.target for f in self.cfg.anlage_favorites or [] if f.on_anlage}
+        if object_id in targets:
+            return True
+        tail = object_id.rsplit("/", 1)[-1]
+        return (object_id.startswith("0/My Music/") and "+" in tail
+                and any(t.startswith("0/My Music/") and t.rsplit("/", 1)[-1] == tail for t in targets))
+
+    def refresh_stars(self) -> None:
+        """Nach neuer Teufel-Liste (auch aus der Teufel-App): Sterne passend füllen."""
+        if not self._anlage_mode():
+            return
+        for star in self.findChildren(QPushButton):
+            target = star.property("target")
+            if target:
+                star.setText("★" if self._on_anlage(target) else "☆")
 
     def _star(self, object_name: str, kind: str, container_id: str, start: int, name: str,
-              cover: str | None) -> QPushButton:
+              cover: str | None, object_id: str = "") -> QPushButton:
+        if self._anlage_mode() and object_id:
+            b = QPushButton("★" if self._on_anlage(object_id) else "☆")
+            b.setObjectName(object_name)
+            b.setProperty("target", object_id)
+            b.setProperty("round", True)
+            b.setToolTip(tr("Zu den Teufel-Favoriten (auch in der Teufel-App)"))
+            b.clicked.connect(lambda _=False: self._add_to_anlage(object_id, b))
+            return b
         server = self._server()
         url = container_uri(server.udn, container_id, start) if server is not None else ""
         b = QPushButton("★" if self._fav_exists(kind, url) else "☆")
@@ -412,6 +457,13 @@ class MusicWindow(QWidget):
         b.setToolTip(tr("Als Favorit speichern"))
         b.clicked.connect(lambda _=False: self._add_favorite(object_name, kind, container_id, start, name, cover))
         return b
+
+    def _add_to_anlage(self, object_id: str, button: QPushButton) -> None:
+        server = self._server()
+        if server is None or not server.is_raumfeld or self._on_anlage(object_id):
+            return
+        button.setText("…")  # die Anlage bestätigt mit der neuen Liste
+        self.add_requested.emit(object_id)
 
     def _add_favorite(self, star_name: str, kind: str, container_id: str, start: int, name: str,
                       cover: str | None) -> None:
@@ -472,6 +524,39 @@ class MusicWindow(QWidget):
         label = self._cover_labels.get(key)
         if label is not None:
             label.setPixmap(pix)
+
+    # --- Laufender Titel ----------------------------------------------------
+    def set_state(self, rooms: list) -> None:
+        """Zustand der Anlage: beim Titel, der im Ziel-Raum läuft, Pause statt Play zeigen."""
+        target = self.target()
+        room = next((r for r in rooms if r.udn == target), None)
+        now = (track_key(room.track_id), bool(room.playing)) if room is not None and room.is_queue else (None, False)
+        if now == self._now:
+            return
+        self._now = now
+        for b in self.findChildren(QPushButton):
+            if b.property("track_key") is not None:
+                self._style_track_button(b)
+
+    def _is_current(self, button: QPushButton) -> bool:
+        key = button.property("track_key")
+        return bool(key) and key == self._now[0]
+
+    def _style_track_button(self, button: QPushButton) -> None:
+        current, playing = self._is_current(button), self._now[1]
+        button.setText(ICON_PAUSE if current and playing else ICON_PLAY)
+        if current:
+            button.setToolTip(tr("Pause") if playing else tr("Weiterspielen"))
+        else:
+            button.setToolTip(tr("Ab diesem Titel abspielen"))
+
+    def _track_clicked(self, index: int, button: QPushButton) -> None:
+        if self._is_current(button):
+            self.toggle_requested.emit()  # laufenden Titel pausieren/fortsetzen statt neu starten
+            self._now = (self._now[0], not self._now[1])  # sofort umschalten; die Anlage bestätigt gleich
+            self._style_track_button(button)
+            return
+        self._play_view(index)
 
     # --- Abspielen ------------------------------------------------------
     def _play_view(self, start_index: int) -> None:

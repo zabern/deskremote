@@ -56,10 +56,8 @@ def dispatch(name: str, cfg: Config) -> tuple[str, tuple] | None:
     if name == "standby":
         return "standby_group", (target,)
     if name.startswith("favorite_"):
-        idx = int(name.removeprefix("favorite_")) - 1
-        if 0 <= idx < len(cfg.favorites):
-            return "play_favorite", (target, cfg.favorites[idx])
-        return None
+        fav = cfg.hotkey_favorite(int(name.removeprefix("favorite_")) - 1)
+        return ("play_favorite", (target, fav)) if fav is not None else None
     return None
 
 
